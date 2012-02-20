@@ -23,6 +23,7 @@ endif
 ifeq ($(CONFIG_ATM_IDT77252_USE_SUNI),y)
   obj-$(CONFIG_ATM_IDT77252)	+= suni.o
 endif
+obj-$(CONFIG_ATM_UCC)		+= fua.o suni5384.o
 
 obj-$(CONFIG_ATM_DUMMY)		+= adummy.o
 obj-$(CONFIG_ATM_TCP)		+= atmtcp.o
