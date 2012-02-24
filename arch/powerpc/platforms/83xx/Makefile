@@ -17,3 +17,4 @@ obj-$(CONFIG_SBC834x)		+= sbc834x.o
 obj-$(CONFIG_MPC837x_RDB)	+= mpc837x_rdb.o
 obj-$(CONFIG_ASP834x)		+= asp834x.o
 obj-$(CONFIG_KMETER1)		+= km83xx.o
+obj-$(CONFIG_MPC8358_PMCATM)	+= mpc8358_pmcatm.o

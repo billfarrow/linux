@@ -111,6 +111,12 @@ config KMETER1
 	help
 	  This enables support for the Keymile KMETER1 board.
 
+config MPC8358_PMCATM
+	bool "BEC MPC8358 PMC-ATM"
+	select DEFAULT_UIMAGE
+	help
+	  This option enables support for the Beyond Electronics Corp MPC8358 PMC-ATM Processor Board.
+
 
 endif
 
