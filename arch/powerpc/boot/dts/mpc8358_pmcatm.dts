@@ -13,10 +13,6 @@
  */
 
 
-/*
-/memreserve/	00000000 1000000;
-*/
-
 /dts-v1/;
 
 / {
@@ -47,32 +43,69 @@
 		};
 	};
 
+	/* 128MB DDR2 RAM */
 	memory {
 		device_type = "memory";
-		reg = <0x00000000 0x8000000>;
+		reg = <0x00000000 0x08000000>;
 	};
 
 	localbus@e0005000 {
-		#address-cells = <2>;
+		#address-cells = <1>;
 		#size-cells = <1>;
 		compatible = "fsl,mpc8360-localbus", "fsl,pq2pro-localbus",
 			     "simple-bus";
 		reg = <0xe0005000 0xd8>;
-		ranges = <0 0 0xfc000000 0x04000000
-		          1 0 0xf8000000 0x00000100>;
+		ranges = <0 0xfc000000 0x04000000		/* 64MB Flash */
+		          1 0xf8000000 0x00000100>;		/* CPLD */
 
+		/* Flash starts at 0xFC000000, mtd partitions are specified as offsets */
 		flash@0,0 {
-			compatible = "cfi-flash";
-			reg = <0 0 0x04000000>;
-			bank-width = <1>;
+			compatible = "spansion,s29gl512p", "cfi-flash";
+			reg = <0 0x04000000>;
+			bank-width = <2>;
 			device-width = <1>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/* 1st sector contains RCWL and RCWH that configures the CPU clocks etc */
+			reset-config-words@0 {
+				label = "reset-config-words";
+				reg = <0x0 0x20000>;
+				read-only;
+			};
+			/* linux kernel 2MB - 16 sectors */
+			kernel@20000 {
+				label = "kernel";
+				reg = <0x20000 0x200000>;
+			};
+			/* Root Filesystem (squashfs) - 8MB = 64 sectors */
+			rootfs@220000 {
+				label = "rootfs";
+				reg = <0x220000 0x800000>;
+			};
+			/* CPU starts running u-boot code from 0xFFF00100 - 3 sectors */
+			u-boot@3F00000 {
+				label = "u-boot";
+				reg = <0x3F00000 0x60000>;
+				read-only;
+			};
+			/* u-boot environment - 1 sector */
+			u-boot-env@3F60000 {
+				label = "u-boot-env";
+				reg = <0x3F60000 0x20000>;
+			};
+			/* Flattened Device Tree (fdt) - 1 sector */
+			fdt@3F80000 {
+				label = "fdt";
+				reg = <0x3F80000 0x20000>;
+			};
 		};
 
 		cpld@1,0 {
 			#address-cells = <1>;
 			#size-cells = <1>;
  			compatible = "fsl,mpc8358_pmcatm-cpld";
-			reg = <1 0 0x100>;
+			reg = <1 0x100>;
 		};
 	};
 
