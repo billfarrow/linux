@@ -79,9 +79,9 @@
 				reg = <0x20000 0x200000>;
 			};
 			/* Root Filesystem (squashfs) - 8MB = 64 sectors */
-			rootfs@220000 {
+			rootfs@820000 {
 				label = "rootfs";
-				reg = <0x220000 0x800000>;
+				reg = <0x820000 0x800000>;
 			};
 			/* CPU starts running u-boot code from 0xFFF00100 - 3 sectors */
 			u-boot@3F00000 {
