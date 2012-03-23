@@ -18,9 +18,9 @@
 
 #define	EXPORT_SYNTAB
 
-#ifdef MODULE
+//#ifdef MODULE
 #include <linux/module.h>
-#endif
+//#endif
 
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -37,8 +37,11 @@
 #include <linux/bitops.h>
 #include <linux/dma-mapping.h>
 
-#include <asm/of_platform.h>
-#include <asm/of_device.h>
+#include <linux/of_address.h>
+#include <linux/platform_device.h>
+
+#include <linux/of_platform.h>
+#include <linux/of_device.h>
 #include <asm/dma-mapping.h>
 #include <asm/cacheflush.h>
 #include <asm/system.h>
@@ -58,6 +61,12 @@
 #endif
 
 #define DRV_NAME "fua"
+#define DRV_VERSION "1.1"
+
+int suni5384_init(struct atm_dev *dev, struct device_node *np,
+            int *upc_slot, int *port_width, int *phy_id,
+            u32 *line_bitr, u32 *max_bitr, u32 *min_bitr);
+void suni5384_exit(struct atm_dev *dev);
 
 struct fua_info fua_primary_info = {
 	.max_thread = 0x10,
@@ -1894,7 +1903,7 @@ enum tran_res do_tx(struct sk_buff *skb)
 				if (bd == NULL)
 					return TRAN_FAIL;
 				bd->buf =
-				 ((page_to_pfn(skb_shinfo(skb)->frags[i].page)
+				 ((page_to_pfn(skb_frag_page(&skb_shinfo(skb)->frags[i]))
 					 << PAGE_SHIFT) +
 					skb_shinfo(skb)->frags[i].page_offset);
 				bd->length = skb_shinfo(skb)->frags[i].size;
@@ -2174,9 +2183,9 @@ void handle_intr(struct fua_private *fua_priv)
 	int event;
 	unsigned long flags;
 
-	spin_lock_irqsave(fua_priv->lock, flags);
+	spin_lock_irqsave(&fua_priv->lock, flags);
 	event = fua_priv->intr_event;
-	spin_unlock_irqrestore(fua_priv->lock, flags);
+	spin_unlock_irqrestore(&fua_priv->lock, flags);
 
 	if (event & UCCE_ATM_TIRU) {
 		/* only occur in transmit internal rate mode */
@@ -2487,7 +2496,7 @@ static int fua_getsockopt(struct atm_vcc *vcc, int level, int optname,
 }
 
 static int fua_setsockopt(struct atm_vcc *vcc, int level, int optname,
-				void *optval, int optlen)
+				void *optval, unsigned int optlen)
 {
 	return -EINVAL;
 }
@@ -2589,6 +2598,7 @@ static const struct atmdev_ops ops = {
 	getsockopt: fua_getsockopt,
 	setsockopt: fua_setsockopt,
 	send: fua_send,
+	send_oam: NULL,
 	phy_put: NULL,
 	phy_get: NULL,
 	change_qos: fua_change_qos,
@@ -2614,7 +2624,7 @@ static int fua_atm_device_create(struct fua_private *f_p, struct device_node *ph
 	struct upc_slot_rx *upc_slot_rx;
 	int err;
 
-	dev = atm_dev_register("Freescale UCC ATM", &ops, -1, NULL);
+	dev = atm_dev_register("Freescale UCC ATM", NULL, &ops, -1, NULL);
 	if (dev == NULL)
 		return -ENOMEM;
 
@@ -3056,7 +3066,7 @@ static int check_phy_node(struct device_node *phy, struct device_node * ucc)
 	return err;
 }
 
-static int fua_probe(struct of_device *ofdev, const struct of_device_id *match)
+static int fua_probe(struct platform_device *ofdev)
 {
 	struct device *device = &ofdev->dev;
 	struct device_node *np, *phy_node;
@@ -3070,7 +3080,7 @@ static int fua_probe(struct of_device *ofdev, const struct of_device_id *match)
 	int i, err;
 
 	err = 0;
-	np = ofdev->node;
+	np = ofdev->dev.of_node;
 	of_node_get(np);
 	fua_info = kmalloc(sizeof(struct fua_info),GFP_KERNEL);
 	if (!fua_info) {
@@ -3187,7 +3197,7 @@ out:
 	return err;
 }
 
-static int fua_remove(struct of_device *ofdev)
+static int fua_remove(struct platform_device *ofdev)
 {
 	struct device *device = &ofdev->dev;
 	struct fua_private *fua_priv = dev_get_drvdata(device);
@@ -3219,34 +3229,39 @@ static int fua_remove(struct of_device *ofdev)
 }
 
 static struct of_device_id fua_match[] = {
-	{
-		.type = "atm",
-		.compatible = "fua",
+	{ .name = "atm",
+	  .compatible = "fua",
 	},
 	{},
 };
 
 MODULE_DEVICE_TABLE(of, fua_match);
 
-static struct of_platform_driver fua_driver = {
-	.name = DRV_NAME,
-	.match_table = fua_match,
+static struct platform_driver fua_driver = {
 	.probe = fua_probe,
 	.remove = fua_remove,
+	.driver = {
+		.name = DRV_NAME,
+		.owner  = THIS_MODULE,
+		.of_match_table = fua_match,
+	},
 };
 
+/*
 static int __init fua_init(void)
 {
-	return of_register_platform_driver(&fua_driver);
+	return platform_driver_register(&fua_driver);
 }
 
 static void __exit fua_exit(void)
 {
-	of_unregister_platform_driver(&fua_driver);
+	platform_driver_unregister(&fua_driver);
 }
 
 module_init(fua_init);
 module_exit(fua_exit);
+*/
+module_platform_driver(fua_driver);
 
 MODULE_AUTHOR("Tony Li");
 MODULE_DESCRIPTION(DRV_DESC);

@@ -13,6 +13,7 @@
  * option) any later version.
  */
 
+#include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
@@ -72,7 +73,7 @@ static void phy_put(void __iomem *reg, unsigned char val)
 
 static struct timer_list poll_timer;
 static struct suni_priv *sunis = NULL;
-static spinlock_t sunis_lock = SPIN_LOCK_UNLOCKED;
+DEFINE_SPINLOCK(sunis_lock);
 
 
 #define ADD_LIMITED(s,v) \

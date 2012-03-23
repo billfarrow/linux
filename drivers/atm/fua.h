@@ -22,8 +22,9 @@
 #include <asm/types.h>
 #include <asm/immap_qe.h>
 #include <asm/qe.h>
-#include <asm/mpc83xx.h>
+//#include <asm/mpc83xx.h>
 #include <asm/atomic.h>
+#include <linux/interrupt.h>
 
 /* #define	FUA_DEBUG */
 

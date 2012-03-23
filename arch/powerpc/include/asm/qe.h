@@ -328,6 +328,33 @@ enum comm_dir {
 	COMM_DIR_RX_AND_TX = 3
 };
 
+/* Clock Source Direction */
+enum clk_dir {
+   CLK_RX = 1,
+   CLK_TX = 2,
+   CLK_RTX = 3,
+   CLK_INTERNAL = 4
+};
+
+struct clock_map {
+   u8 dir;
+   const char name[5];
+   u16 value;
+};
+
+/* The CMXUPCR represents two UPCs.
+ * Bits 0-15 represents UPC 1.
+ * Bits 16-31 represents UPC 2
+ */
+#define QE_CMXUPCR_RCS_SHIFT   12
+#define QE_CMXUPCR_TCS_SHIFT   8
+#define QE_CMXUPCR_RCS_MASK    0x0007
+
+/* Time stamp register */
+#define QE_CETSCR_EC   0x8000
+#define QE_CETSCR_RTE  0x0400
+int qe_enable_time_stamp(int num);
+
 /* QE CMXUCR Registers.
  * There are two UCCs represented in each of the four CMXUCR registers.
  * These values are for the UCC in the LSBs

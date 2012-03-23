@@ -56,7 +56,8 @@
 			     "simple-bus";
 		reg = <0xe0005000 0xd8>;
 		ranges = <0 0xfc000000 0x04000000		/* 64MB Flash */
-		          1 0xf8000000 0x00000100>;		/* CPLD */
+		          1 0xf8000000 0x00000100		/* CPLD */
+		          2 0xf9000000 0x00000400>;		/* ATM Suni PHY - PMC-Sierra PM5384 */
 
 		/* Flash starts at 0xFC000000, mtd partitions are specified as offsets */
 		flash@0,0 {
@@ -107,6 +108,25 @@
  			compatible = "fsl,mpc8358_pmcatm-cpld";
 			reg = <1 0x100>;
 		};
+
+		pm5384: fua-phy@0 {
+			device_type = "atm phy";
+			compatible = "fua-phy";
+			device-id = <1>;
+			reg = <0x0 0x200>;
+			interrupt-parent = < &ipic >;
+			interrupts = <14 8>;
+			upc-slot = < &upcs0 >;
+			ucc-handle = < &ucc3 >;
+
+			/* 155000000 - 0x93d1cc0 */
+			/* 50000000 - 0x2faf080 */
+			line_bitr = <0x93d1cc0>;
+			max_bitr = <0x93d1cc0>;
+			min_bitr = <0x2faf080>;
+			port-width = <1>;
+		};
+
 	};
 
 	soc8358@e0000000 {
@@ -240,6 +260,7 @@
 
 			pio1: ucc_pin@01 {
 				pio-map = <
+			/* see documentation: Documentation/devicetree/bindings/powerpc/fsl/cpm_qe/qe/pincfg.txt  */
 			/* port  pin  dir  open_drain  assignment  has_irq */
 					0  3  1  0  1  0 	/* TxD0 */
 					0  4  1  0  1  0 	/* TxD1 */
@@ -261,6 +282,66 @@
 					1 12  1  0  0  0    /* ETH_RESET_IN */
 					>;
 			};
+
+			pio3: upc_pin@01 {
+				pio-map = <
+				/* port  pin  dir  open_drain  assignment  has_irq */
+				/* UPC1 in Tx master mode */
+					1  14 1  0  3  0   /* TxSOC */
+					3  22 1  0  1  0   /* TxPRTY */
+					1  15 1  0  3  0   /* TxENB[0] */
+					1  16 2  0  1  0   /* TxCLAV[0] */
+					4  3  1  0  2  0   /* TxADDR[0] */
+					4  8  1  0  3  0   /* TxADDR[1] */
+					4  12 1  0  2  0   /* TxADDR[2] */
+					4  1  1  0  2  0   /* TxADDR[3] */
+					4  13 1  0  3  0   /* TxADDR[4] */
+                    3  4  1  0  3  0   /* TxDATA[0] */
+					3  3  1  0  2  0   /* TxDATA[1] */
+					3  2  1  0  2  0   /* TxDATA[2] */
+					3  1  1  0  3  0   /* TxDATA[3] */
+					3  0  1  0  3  0   /* TxDATA[4] */
+					1  27 1  0  2  0   /* TxDATA[5] */
+					1  26 1  0  1  0   /* TxDATA[6] */
+					1  25 1  0  1  0   /* TxDATA[7] */
+					1  24 1  0  1  0   /* TxDATA[8] */
+					1  23 1  0  1  0   /* TxDATA[9] */
+					1  22 1  0  1  0   /* TxDATA[10] */
+					1  21 1  0  2  0   /* TxDATA[11] */
+					1  20 1  0  2  0   /* TxDATA[12] */
+					1  19 1  0  3  0   /* TxDATA[13] */
+					1  18 1  0  2  0   /* TxDATA[14] */
+					1  17 1  0  2  0   /* TxDATA[15] */
+				/* UPC1 in Rx master mode */
+					3  5  2  0  1  0  /* RxSCO */
+					3  19 2  0  3  0  /* RxPRTY */
+					3  6  1  0  3  0  /* RxENB */
+					3  7  2  0  3  0  /* RxCLAV */
+					4  2  1  0  2  0  /* RxADDR[0] */
+					4  5  1  0  3  0  /* RxADDR[1] */
+					4  4  1  0  2  0  /* RxADDR[2] */
+					4  11 1  0  1  0  /* RxADDR[3] */
+					4  7  1  0  2  0  /* RxADDR[4] */
+					3  27 2  0  3  0  /* RxDATA[0] */
+					3  26 2  0  2  0  /* RxDATA[1] */
+					3  25 2  0  2  0  /* RxDATA[2] */
+					3  24 2  0  2  0  /* RxDATA[3] */
+					3  23 2  0  3  0  /* RxDATA[4] */
+					3  21 2  0  3  0  /* RxDATA[5] */
+					3  20 2  0  3  0  /* RxDATA[6] */
+					3  18 2  0  2  0  /* RxDATA[7] */
+					3  15 2  0  3  0  /* RxDATA[8] */
+					3  14 2  0  3  0  /* RxDATA[9] */
+					3  13 2  0  3  0  /* RxDATA[10] */
+					3  12 2  0  2  0  /* RxDATA[11] */
+					3  11 2  0  3  0  /* RxDATA[12] */
+					3  10 2  0  3  0  /* RxDATA[13] */
+					3  9  2  0  2  0  /* RxDATA[14] */
+					3  8  2  0  3  0  /* RxDATA[15] */
+				/* Tx clock and Rx clock */
+					2  7  2  0  1  0  /* Tx clock CLK8 (from CLK15) */
+					2  5  2  0  1  0>;/* Rx clock CLK6 (from CLK13) */
+				};
 
 		};
 	};
@@ -350,6 +431,42 @@
 				device_type = "tbi-phy";
 			};
 		};
+
+		ucc3: ucc@2200 {
+			device_type = "atm";
+			compatible = "fua";
+			model = "UCC";
+			device-id = <3>;
+			reg = <0x2200 0x200>;
+			interrupts = <22>;
+			interrupt-parent = < &qeic >;
+			multithread;
+			threads = <10>;
+		};
+
+		upc@2e00 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			device_type = "upc";
+			compatible = "fsl,qe_upc";
+			device-id = <1>;
+			reg = <0x2e00 0x200>;
+			fsl,rx-clock = "clk6";
+			fsl,tx-clock = "clk8";
+			fsl,internal-clock = "none";
+			fsl,utopia;
+			fsl,tx-slave = <0>;
+			fsl,rx-slave = <0>;
+			fsl,address-mode = <0>;
+			pio-handle = < &pio3 >;
+
+			upcs0: upc-slot@00 {
+				device_type = "upc-slot";
+				device-id = <1>;
+				fsl,end-point = <4>;
+			};
+		};
+
 
 		qeic: interrupt-controller@80 {
 			interrupt-controller;
