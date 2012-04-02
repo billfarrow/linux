@@ -269,3 +269,9 @@
 #define SUNI_PSL_ATM_CELLS	0x13
 
 #define SUNI_IDLE_PATTERN	0x6A	/* idle pattern */
+
+int suni5384_init(struct atm_dev *dev, struct device_node *np,
+            int *upc_slot, int *port_width, int *phy_id,
+            u32 *line_bitr, u32 *max_bitr, u32 *min_bitr);
+void suni5384_exit(struct atm_dev *dev);
+

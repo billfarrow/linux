@@ -26,7 +26,7 @@
 #include <asm/atomic.h>
 #include <linux/interrupt.h>
 
-/* #define	FUA_DEBUG */
+#define	FUA_DEBUG
 
 #ifdef FUA_DEBUG
 #define fua_debug(format, args...) \

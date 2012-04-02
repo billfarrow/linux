@@ -119,6 +119,17 @@ static void __init mpc8358_pmcatm_setup_arch(void)
 
 		of_node_put(np);
 	}
+
+	if ((np = of_find_compatible_node(NULL, "upc", "fsl,qe_upc")) != NULL)
+	{
+		//if (qe_clock_is_brg(clk))
+		//	qe_setbrg(clk, rate, 1);
+		qe_setbrg(QE_BRG5, 48000000, 1);
+		qe_setbrg(QE_BRG6, 48000000, 1);
+
+		of_node_put(np);
+	}
+
 #endif				/* CONFIG_QUICC_ENGINE */
 }
 

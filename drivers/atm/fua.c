@@ -55,6 +55,7 @@
 #include <asm/upc.h>
 
 #include "fua.h"
+#include "pm5384.h"
 
 #ifdef MODULE
 #warning "ATM work as module"
@@ -62,11 +63,6 @@
 
 #define DRV_NAME "fua"
 #define DRV_VERSION "1.1"
-
-int suni5384_init(struct atm_dev *dev, struct device_node *np,
-            int *upc_slot, int *port_width, int *phy_id,
-            u32 *line_bitr, u32 *max_bitr, u32 *min_bitr);
-void suni5384_exit(struct atm_dev *dev);
 
 struct fua_info fua_primary_info = {
 	.max_thread = 0x10,
@@ -579,7 +575,7 @@ void dump_mth_intq(intr_que_para_mth_tbl_t * mth_queue)
 	} while (!(entry->attr & INT_QUE_ENT_ATTR_W));
 }
 
-int intq_nmth_init(intr_que_para_tbl_t *intr_que, intr_que_entry_t **intcur,
+int intq_nmth_init(struct device * dev, intr_que_para_tbl_t *intr_que, intr_que_entry_t **intcur,
 			int intent_cnt, int threshold)
 {
 	int i, intque_size;
@@ -592,7 +588,7 @@ int intq_nmth_init(intr_que_para_tbl_t *intr_que, intr_que_entry_t **intcur,
 
 	intque_size = intent_cnt * sizeof(intr_que_entry_t);
 	entry = (intr_que_entry_t *)
-		dma_alloc_coherent(NULL, intque_size, &addr, GFP_DMA);
+		dma_alloc_coherent(dev, intque_size, &addr, GFP_DMA);
 	if (entry == NULL)
 		return -ENOMEM;
 
@@ -614,7 +610,7 @@ int intq_nmth_init(intr_que_para_tbl_t *intr_que, intr_que_entry_t **intcur,
 	return 0;
 }
 
-int intq_mth_init(intr_que_para_mth_tbl_t *intr_que,
+int intq_mth_init(struct device * dev, intr_que_para_mth_tbl_t *intr_que,
 			int intent_cnt, int threshold)
 {
 	int i, intque_size;
@@ -633,7 +629,7 @@ int intq_mth_init(intr_que_para_mth_tbl_t *intr_que,
 	}
 
 	entry = (intr_que_entry_t *)
-		dma_alloc_coherent(NULL, intque_size, &addr, GFP_DMA);
+		dma_alloc_coherent(dev, intque_size, &addr, GFP_DMA);
 	if (entry == NULL)
 		return -ENOMEM;
 
@@ -655,7 +651,7 @@ int intq_mth_init(intr_que_para_mth_tbl_t *intr_que,
 	return 0;
 }
 
-void intq_exit(void *intr_que_tbl, int intent_cnt)
+void intq_exit(struct device *dev, void *intr_que_tbl, int intent_cnt)
 {
 	int intque_size;
 	u32 intq_base;
@@ -663,7 +659,7 @@ void intq_exit(void *intr_que_tbl, int intent_cnt)
 	intque_size = intent_cnt * sizeof(intr_que_entry_t);
 	intq_base = in_be32(intr_que_tbl);
 
-	dma_free_coherent(NULL, intque_size, bus_to_virt(intq_base),
+	dma_free_coherent(dev, intque_size, bus_to_virt(intq_base),
 				(dma_addr_t)intq_base);
 }
 
@@ -1553,8 +1549,12 @@ int open_tx(struct atm_vcc *vcc)
 		|| (tx_qos->traffic_class == ATM_UBR)
 		|| (tx_qos->traffic_class == ATM_ANYCLASS)) {
 		fua_vcc->traffic_type = PCR;
-	} else
+	}
+	else
+	{
+		fua_debug("tx_qos->traffic_class: 0x%x\n", tx_qos->traffic_class);
 		return -1;
+	}
 
 	fua_vcc->tx_intq_num = INT_TX_QUE;
 
@@ -1594,6 +1594,7 @@ int open_tx(struct atm_vcc *vcc)
 	if (i == fua_info->max_channel) {
 		free_bds(&f_p->bd_pool, fua_vcc->txbase,
 				fua_info->bd_per_channel);
+		fua_debug("failed freeing bds\n");
 		return -EFAULT;
 	}
 
@@ -1864,9 +1865,16 @@ enum tran_res do_tx(struct sk_buff *skb)
 	struct qe_bd *bd;
 	struct atm_vcc *vcc;
 	struct fua_vcc *fua_vcc;
+	struct device *dev;
 
 	vcc = ATM_SKB(skb)->vcc;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
+	dev = &(vcc->dev->class_dev);
+	fua_debug(" enter [skb->dev=%p] [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p]\n",
+			skb->dev, fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev);
+//	fua_debug(" dev->archdata->dma_ops=%p\n", dev->archdata.dma_ops);
+//	fua_debug(" fua_vcc->vcc->dev->class_dev.archdata.dma_ops=%p\n", fua_vcc->vcc->dev->class_dev.archdata.dma_ops);
+//	fua_debug(" skb->dev->dev.archdata->dma_ops=%p\n", skb->dev->dev.archdata.dma_ops);
 
 	if (!skb->len || skb->len > ATM_MAX_AAL5_PDU || !skb->data) {
 		printk("failed skb->len:%d\n", skb->len);
@@ -1877,25 +1885,34 @@ enum tran_res do_tx(struct sk_buff *skb)
 		return TRAN_DIE;
 	}
 
+	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	bd = get_free_tx_bd(fua_vcc);
+	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	if (bd == NULL) {
 		fua_debug("no bd\n");
 		return TRAN_FAIL;
 	}
-	bd->buf = dma_map_single(NULL, skb->data, skb->len, DMA_TO_DEVICE);
+	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
+	bd->buf = dma_map_single(dev, skb->data, skb->len, DMA_TO_DEVICE);
+	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	bd->length = skb->len;
+	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	bd->status = ((bd->status & AAL5_TXBD_ATTR_W) | AAL5_TXBD_ATTR_I);
+	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	if (!skb_shinfo(skb)->nr_frags && !skb_shinfo(skb)->frag_list) {
+		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 		bd->status |= (AAL5_TXBD_ATTR_L | AAL5_TXBD_ATTR_R);
 		flush_dcache_range((size_t) bd,
 				(size_t) (bd + sizeof(struct qe_bd)));
 		if (fua_vcc->avcf)
 			atm_transmit(fua_vcc, 0, 0, 0);
 	} else {
+		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 		bd->status |= AAL5_TXBD_ATTR_R;
 		flush_dcache_range((size_t) bd,
 				(size_t) (bd + sizeof(struct qe_bd)));
 
+		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 		if (skb_shinfo(skb)->nr_frags) {
 			fua_debug("A sk_frag got\n");
 			for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
@@ -1923,6 +1940,7 @@ enum tran_res do_tx(struct sk_buff *skb)
 					atm_transmit(fua_vcc, 0, 0, 0);
 			}
 		}
+		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 		if (skb_shinfo(skb)->frag_list) {
 			/* This should be a bug ?? */
 			struct sk_buff *list = skb_shinfo(skb)->frag_list;
@@ -1935,6 +1953,7 @@ enum tran_res do_tx(struct sk_buff *skb)
 		}
 	}
 
+	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	return TRAN_OK;
 }
 
@@ -2286,6 +2305,7 @@ static int fua_send(struct atm_vcc *vcc, struct sk_buff *skb)
 	struct fua_vcc *fua_vcc;
 
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
+	fua_debug(" enter [atm_vcc=%p] [fua_vcc=%p] [atm_vcc->dev=%p]\n", vcc, fua_vcc, vcc->dev);
 	if (!fua_vcc) {
 		fua_debug("no fua_vcc\n");
 		goto fail;
@@ -2338,6 +2358,7 @@ static int fua_open(struct atm_vcc *vcc)
 	if (!test_bit(ATM_VF_PARTIAL, &vcc->flags))
 		vcc->dev_data = NULL;
 	fua_dev = (struct fua_device *)dev->dev_data;
+	fua_debug(" enter [atm_vcc=%p] [atm_dev=%p] [fua_dev=%p]\n", vcc, dev, fua_dev);
 
 	vpi = vcc->vpi;
 	vci = vcc->vci;
@@ -2378,13 +2399,17 @@ static int fua_open(struct atm_vcc *vcc)
 		fua_debug("vci or vpi is not specified\n");
 		return 0;
 	}
-	if ((error = open_rx(vcc))) {
-		printk("open_rx failed\n");
-		goto out;
+	if (vcc->qos.rxtp.traffic_class != ATM_NONE) {
+		if ((error = open_rx(vcc))) {
+			printk("open_rx failed\n");
+			goto out;
+		}
 	}
-	if ((error = open_tx(vcc))) {
-		printk("open_tx failed\n");
-		goto out1;
+	if (vcc->qos.txtp.traffic_class != ATM_NONE) {
+		if ((error = open_tx(vcc))) {
+			printk("open_tx failed\n");
+			goto out1;
+		}
 	}
 
 	if(atomic_read(&fua_dev->refcnt) == 0) {
@@ -2420,8 +2445,10 @@ static void fua_close(struct atm_vcc *vcc)
 	clear_bit(ATM_VF_READY, &vcc->flags);
 	fua_debug("vpi:%d vci:%d\n", vcc->vpi, vcc->vci);
 	list_del(&fua_vcc->list);
-	close_tx(vcc);
-	close_rx(vcc);
+	if (vcc->qos.txtp.traffic_class != ATM_NONE)
+		close_tx(vcc);
+	if (vcc->qos.rxtp.traffic_class != ATM_NONE)
+		close_rx(vcc);
 	kfree(fua_vcc);
 	clear_bit(ATM_VF_ADDR, &vcc->flags);
 	if (atomic_sub_return(1, &fua_dev->refcnt) == 0) {
@@ -2614,7 +2641,7 @@ static const struct atmdev_ops ops = {
  * 2. Initialize correspondin phy dev and get phy info
  * 3. get corresponding upc slot info
  */
-static int fua_atm_device_create(struct fua_private *f_p, struct device_node *phy_node)
+static int fua_atm_device_create(struct device *device, struct fua_private *f_p, struct device_node *phy_node)
 {
 	struct atm_dev *dev;
 	struct fua_info *fua_info = f_p->fua_info;
@@ -2628,6 +2655,7 @@ static int fua_atm_device_create(struct fua_private *f_p, struct device_node *ph
 	if (dev == NULL)
 		return -ENOMEM;
 
+	dev->class_dev.archdata.dma_ops = device->archdata.dma_ops;
 	dev->ci_range.vpi_bits = MAX_VPI_BITS;
 	dev->ci_range.vci_bits = MAX_VCI_BITS;
 	dev->link_rate = ATM_OC3_PCR;
@@ -2635,15 +2663,19 @@ static int fua_atm_device_create(struct fua_private *f_p, struct device_node *ph
 	phy_info = kmalloc(sizeof(struct phy_info),GFP_KERNEL);
 	if (phy_info == NULL) {
 		err = -ENOMEM;
+		fua_debug(" failed to kmalloc phy_info\n");
 		goto out;
 	}
 
+	fua_debug(" calling suni5384_init()\n");
 	if ((err = suni5384_init(dev, phy_node, &phy_info->upc_slot,
 			 &phy_info->port_width, &phy_info->phy_id,
 			 &phy_info->line_bitr, &phy_info->max_bitr,
 			 &phy_info->min_bitr)) != 0) {
+		fua_debug(" failed to init suni phy\n");
 		goto out1;
 	}
+	fua_debug(" returned from suni5384_init()\n");
 
 	phy_info->prio_level = 2;
 	phy_info->max_iteration = 3;
@@ -2656,6 +2688,7 @@ static int fua_atm_device_create(struct fua_private *f_p, struct device_node *ph
 		upc_slot_tx = kzalloc(sizeof(struct upc_slot_tx),GFP_KERNEL);
 		if (upc_slot_tx == NULL) {
 			err = -ENOMEM;
+			fua_debug(" failed to kzalloc upc_slot_tx\n");
 			goto out1;
 		}
 		upc_slot_tx->slot = phy_info->upc_slot;
@@ -2677,6 +2710,7 @@ static int fua_atm_device_create(struct fua_private *f_p, struct device_node *ph
 		upc_slot_rx = kzalloc(sizeof(struct upc_slot_rx),GFP_KERNEL);
 		if(upc_slot_rx == NULL) {
 			err = -ENOMEM;
+			fua_debug(" failed to kzalloc upc_slot_rx\n");
 			goto out2;
 		}
 		upc_slot_rx->slot = phy_info->upc_slot;
@@ -2695,6 +2729,7 @@ static int fua_atm_device_create(struct fua_private *f_p, struct device_node *ph
 	fua_dev = kzalloc(sizeof(struct fua_device), GFP_KERNEL);
 	if (fua_dev == NULL) {
 		err = -ENOMEM;
+		fua_debug(" failed to kzalloc fua_device\n");
 		goto out3;
 	}
 	fua_dev->u_id = fua_info->uf_info.ucc_num % 2 ? 1 : 0;
@@ -2706,6 +2741,7 @@ static int fua_atm_device_create(struct fua_private *f_p, struct device_node *ph
 	atomic_set(&fua_dev->refcnt, 0);
 	dev->dev_data = fua_dev;
 
+	fua_debug(" registered [atm_dev=%p] [fua_dev=%p] [fua_priv=%p]\n", dev, fua_dev, f_p);
 	return 0;
 out3:
 	kfree(upc_slot_rx);
@@ -2715,6 +2751,7 @@ out1:
 	kfree(phy_info);
 out:
 	atm_dev_deregister(dev);
+	fua_debug(" failed with error: %d \n", err);
 	return err;
 }
 
@@ -2731,7 +2768,7 @@ static void fua_atm_device_remove(struct fua_device *fua_dev)
 	return;
 }
 
-static int fua_priv_init(struct fua_private * f_p)
+static int fua_priv_init(struct device * dev, struct fua_private * f_p)
 {
 	struct fua_info *fua_info = f_p->fua_info;
 	struct list_head *p, *n;
@@ -2766,12 +2803,12 @@ static int fua_priv_init(struct fua_private * f_p)
 
 	for (i = 0; i < fua_info->max_intr_que; i++) {
 		if(fua_info->mthmode) {
-			if(intq_mth_init(&f_p->intr_que.mth_base[i],
+			if(intq_mth_init(dev, &f_p->intr_que.mth_base[i],
 					fua_info->intr_ent_per_que,
 					fua_info->intr_threshold))
 				goto out2;
 		 } else {
-			if(intq_nmth_init(&f_p->intr_que.base[i],
+			if(intq_nmth_init(dev, &f_p->intr_que.base[i],
 					&f_p->intrcur[i],
 					fua_info->intr_ent_per_que,
 					fua_info->intr_threshold))
@@ -2800,7 +2837,7 @@ static int fua_priv_init(struct fua_private * f_p)
 
 out2:
 	for (j = i - 1; j > 0; j--) {
-		intq_exit((void *)&f_p->intr_que.base[i],
+		intq_exit(dev, (void *)&f_p->intr_que.base[i],
 				fua_info->intr_ent_per_que);
 	}
 
@@ -2817,7 +2854,7 @@ out:
 	return err;
 }
 
-static void fua_priv_exit(struct fua_private *f_p)
+static void fua_priv_exit(struct device *dev, struct fua_private *f_p)
 {
 	struct fua_info *fua_info = f_p->fua_info;
 	struct fua_device *fua_dev;
@@ -2829,7 +2866,7 @@ static void fua_priv_exit(struct fua_private *f_p)
 			fua_info->threads);
 
 	for (i = 0; i < fua_info->max_intr_que; i++)
-		intq_exit((void *)&f_p->intr_que.base[i],
+		intq_exit(dev, (void *)&f_p->intr_que.base[i],
 				fua_info->intr_ent_per_que);
 
 	addr_comp_lookup_exit(f_p->addr_tbl, f_p->fua_info->vct_exp);
@@ -2844,7 +2881,7 @@ static void fua_priv_exit(struct fua_private *f_p)
 	return;
 }
 
-static int fua_struct_init(struct fua_private *f_p)
+static int fua_struct_init(struct device *dev, struct fua_private *f_p)
 {
 	struct fua_info *fua_info = f_p->fua_info;
 	unsigned long offset;
@@ -2853,15 +2890,18 @@ static int fua_struct_init(struct fua_private *f_p)
 	spin_lock_init(&f_p->lock);
 	f_p->subblock = ucc_fast_get_qe_cr_subblock(fua_info->uf_info.ucc_num);
 
+	fua_debug(" initialising !!\n");
+	fua_debug(" [dev=%p] [dev->archdata->dma_ops=%p]\n", dev, dev->archdata.dma_ops);
+
 	if (fua_info->max_channel > MAX_INTERNAL_CHANNEL_CODE) {
 		dma_addr_t addr;
 		i = fua_info->max_channel - MAX_INTERNAL_CHANNEL_CODE;
-		f_p->ext_rct_base = (u32)dma_alloc_coherent(NULL, sizeof(rct_entry_t) * i, &addr, GFP_DMA);
+		f_p->ext_rct_base = (u32)dma_alloc_coherent(dev, sizeof(rct_entry_t) * i, &addr, GFP_DMA);
 		if (!f_p->ext_rct_base) {
 			err = -ENOMEM;
 			goto out;
 		}
-		f_p->ext_tct_base = (u32)dma_alloc_coherent(NULL, sizeof(tct_entry_t) * i, &addr, GFP_DMA);
+		f_p->ext_tct_base = (u32)dma_alloc_coherent(dev, sizeof(tct_entry_t) * i, &addr, GFP_DMA);
 		if (!f_p->ext_tct_base) {
 			err = -ENOMEM;
 			goto out1;
@@ -2982,14 +3022,14 @@ out3:
 out2:
 	if (fua_info->max_channel > MAX_INTERNAL_CHANNEL_CODE) {
 		i = fua_info->max_channel - MAX_INTERNAL_CHANNEL_CODE;
-		dma_free_coherent(NULL, sizeof(tct_entry_t) * i,
+		dma_free_coherent(dev, sizeof(tct_entry_t) * i,
 			(void *)f_p->ext_tct_base, (dma_addr_t)virt_to_bus(
 						(void *)f_p->ext_tct_base));
 	}
 out1:
 	if (fua_info->max_channel > MAX_INTERNAL_CHANNEL_CODE) {
 		i = fua_info->max_channel - MAX_INTERNAL_CHANNEL_CODE;
-		dma_free_coherent(NULL, sizeof(rct_entry_t) * i,
+		dma_free_coherent(dev, sizeof(rct_entry_t) * i,
 			(void *)f_p->ext_rct_base, (dma_addr_t)virt_to_bus(
 						(void *)f_p->ext_rct_base));
 	}
@@ -2998,7 +3038,7 @@ out:
 	return err;
 }
 
-static void fua_struct_exit(struct fua_private *f_p)
+static void fua_struct_exit(struct device * dev, struct fua_private *f_p)
 {
 	struct fua_info *fua_info = f_p->fua_info;
 	int i;
@@ -3015,13 +3055,13 @@ static void fua_struct_exit(struct fua_private *f_p)
 	qe_muram_free(f_p->int_rct_offset);
 	if (fua_info->max_channel > MAX_INTERNAL_CHANNEL_CODE) {
 		i = fua_info->max_channel - MAX_INTERNAL_CHANNEL_CODE;
-		dma_free_coherent(NULL, sizeof(tct_entry_t) * i,
+		dma_free_coherent(dev, sizeof(tct_entry_t) * i,
 			(void *)f_p->ext_tct_base, (dma_addr_t)virt_to_bus(
 						(void *)f_p->ext_tct_base));
 	}
 	if (fua_info->max_channel > MAX_INTERNAL_CHANNEL_CODE) {
 		i = fua_info->max_channel - MAX_INTERNAL_CHANNEL_CODE;
-		dma_free_coherent(NULL, sizeof(rct_entry_t) * i,
+		dma_free_coherent(dev, sizeof(rct_entry_t) * i,
 			(void *)f_p->ext_rct_base, (dma_addr_t)virt_to_bus(
 						(void *)f_p->ext_rct_base));
 	}
@@ -3079,6 +3119,8 @@ static int fua_probe(struct platform_device *ofdev)
 	int ucc_num = -1;
 	int i, err;
 
+	printk(KERN_WARNING "%s(): entering [dev=%p]\n", __func__, device);
+
 	err = 0;
 	np = ofdev->dev.of_node;
 	of_node_get(np);
@@ -3108,6 +3150,7 @@ static int fua_probe(struct platform_device *ofdev)
 	}
 	fua_info->uf_info.regs = res.start;
 	fua_info->uf_info.irq = irq_of_parse_and_map(np, 0);
+	fua_debug("of irq %d\n", fua_info->uf_info.irq);
 	if (of_get_property(np, "multithread", NULL)) {
 		fua_info->mthmode = 1;
 		prop = of_get_property(np, "threads", NULL);
@@ -3131,24 +3174,25 @@ static int fua_probe(struct platform_device *ofdev)
 	(phy_node = of_find_compatible_node(phy_node, "atm phy", "fua-phy"))
 	!= NULL;) {
 		if (!check_phy_node(phy_node, np)) {
-			fua_atm_device_create(fua_priv, phy_node);
-			fua_debug("Created atm device\n");
+			fua_atm_device_create(device, fua_priv, phy_node);
+			fua_debug("Created atm device [fua_priv=%p]\n", fua_priv);
 		}
 		of_node_put(phy_node);
 	}
 
 	/* Allocate necessary resources */
-	if ((err = fua_struct_init(fua_priv)) != 0)
+	if ((err = fua_struct_init(device, fua_priv)) != 0)
 		goto out1;
 
 	/*
 	 * Initailize the necessary resource
 	 * Needs the phy information gotten from fua_atm_device_create
 	 */
-	if ((err = fua_priv_init(fua_priv)) != 0)
+	if ((err = fua_priv_init(device, fua_priv)) != 0)
 		goto out2;
 
 	dev_set_drvdata(device, fua_priv);
+	fua_debug("Setting device data [dev=%p] [fua_priv=%p]\n", device, fua_priv);
 
 	/* Attach to upc slot */
 	for (i = 0; i < UPC_SLOT_MAX_NUM; i++) {
@@ -3183,9 +3227,9 @@ out3:
 	}
 	dev_set_drvdata(device, NULL);
 
-	fua_priv_exit(fua_priv);
+	fua_priv_exit(device, fua_priv);
 out2:
-	fua_struct_exit(fua_priv);
+	fua_struct_exit(device, fua_priv);
 
 out1:
 	list_for_each_safe(p, n, &fua_priv->dev_list) {
@@ -3221,16 +3265,17 @@ static int fua_remove(struct platform_device *ofdev)
 		atm_dev_deregister(fua_dev->dev);
 	}
 
-	fua_priv_exit(fua_priv);
-	fua_struct_exit(fua_priv);
+	fua_priv_exit(device, fua_priv);
+	fua_struct_exit(device, fua_priv);
 	kfree(fua_info);
 
 	return 0;
 }
 
 static struct of_device_id fua_match[] = {
-	{ .name = "atm",
-	  .compatible = "fua",
+	{
+		.type = "atm",
+		.compatible = "fua",
 	},
 	{},
 };
@@ -3247,20 +3292,6 @@ static struct platform_driver fua_driver = {
 	},
 };
 
-/*
-static int __init fua_init(void)
-{
-	return platform_driver_register(&fua_driver);
-}
-
-static void __exit fua_exit(void)
-{
-	platform_driver_unregister(&fua_driver);
-}
-
-module_init(fua_init);
-module_exit(fua_exit);
-*/
 module_platform_driver(fua_driver);
 
 MODULE_AUTHOR("Tony Li");

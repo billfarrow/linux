@@ -50,19 +50,22 @@
 	};
 
 	localbus@e0005000 {
-		#address-cells = <1>;
+		#address-cells = <2>;
 		#size-cells = <1>;
+		#interrupt-cells = <2>;
 		compatible = "fsl,mpc8360-localbus", "fsl,pq2pro-localbus",
 			     "simple-bus";
 		reg = <0xe0005000 0xd8>;
-		ranges = <0 0xfc000000 0x04000000		/* 64MB Flash */
-		          1 0xf8000000 0x00000100		/* CPLD */
-		          2 0xf9000000 0x00000400>;		/* ATM Suni PHY - PMC-Sierra PM5384 */
+		ranges = <0 0 0xfc000000 0x04000000		/* 64MB Flash */
+		          1 0 0xf8000000 0x00000100		/* CPLD */
+		          2 0 0xf9000000 0x00000400>;		/* ATM Suni PHY - PMC-Sierra PM5384 */
+		interrupts = <77 0x8>;
+		interrupt-parent = <&ipic>;
 
 		/* Flash starts at 0xFC000000, mtd partitions are specified as offsets */
 		flash@0,0 {
 			compatible = "spansion,s29gl512p", "cfi-flash";
-			reg = <0 0x04000000>;
+			reg = <0 0 0x04000000>;
 			bank-width = <2>;
 			device-width = <1>;
 			#address-cells = <1>;
@@ -103,19 +106,19 @@
 		};
 
 		cpld@1,0 {
-			#address-cells = <1>;
-			#size-cells = <1>;
+//			#address-cells = <1>;
+//			#size-cells = <1>;
  			compatible = "fsl,mpc8358_pmcatm-cpld";
-			reg = <1 0x100>;
+			reg = <1 0 0x100>;
 		};
 
-		pm5384: fua-phy@0 {
+		pm5384: fua-phy@2,0 {
 			device_type = "atm phy";
 			compatible = "fua-phy";
 			device-id = <1>;
-			reg = <0x0 0x200>;
+			reg = <2 0 0x200>;
 			interrupt-parent = < &ipic >;
-			interrupts = <14 8>;
+			interrupts = <48 0x8>;
 			upc-slot = < &upcs0 >;
 			ucc-handle = < &ucc3 >;
 
@@ -339,8 +342,8 @@
 					3  9  2  0  2  0  /* RxDATA[14] */
 					3  8  2  0  3  0  /* RxDATA[15] */
 				/* Tx clock and Rx clock */
-					2  7  2  0  1  0  /* Tx clock CLK8 (from CLK15) */
-					2  5  2  0  1  0>;/* Rx clock CLK6 (from CLK13) */
+					2  7  1  0  3  0  /* Tx clock BRGO6 (from CLK15) */
+					2  5  1  0  2  0>;/* Rx clock BRGO5 (from CLK13) */
 				};
 
 		};
@@ -353,8 +356,10 @@
 		compatible = "fsl,qe";
 		ranges = <0x0 0xe0100000 0x00100000>;
 		reg = <0xe0100000 0x480>;
-		brg-frequency = <0>;
-		bus-frequency = <396000000>;
+		brg-frequency = <200000000>;
+		bus-frequency = <400000000>;
+		fsl,time-stamp1-clock = "qeclk";
+		fsl,time-stamp2-clock = "qeclk";
 		fsl,qe-num-riscs = <2>;
 		fsl,qe-num-snums = <28>;
 
@@ -435,13 +440,16 @@
 		ucc3: ucc@2200 {
 			device_type = "atm";
 			compatible = "fua";
-			model = "UCC";
+//			model = "UCC";
 			device-id = <3>;
 			reg = <0x2200 0x200>;
-			interrupts = <22>;
+			interrupts = <34>;
 			interrupt-parent = < &qeic >;
+			rx-clock-name = "brg5";
+			tx-clock-name = "brg6";
+			pio-handle = < &pio3 >;
 			multithread;
-			threads = <10>;
+			threads = <16>;
 		};
 
 		upc@2e00 {
@@ -451,8 +459,8 @@
 			compatible = "fsl,qe_upc";
 			device-id = <1>;
 			reg = <0x2e00 0x200>;
-			fsl,rx-clock = "clk6";
-			fsl,tx-clock = "clk8";
+			fsl,rx-clock = "brg5";
+			fsl,tx-clock = "brg6";
 			fsl,internal-clock = "none";
 			fsl,utopia;
 			fsl,tx-slave = <0>;

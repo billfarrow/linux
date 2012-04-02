@@ -262,9 +262,10 @@ static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 	/* Make sure id correct */
 	mri = GET(MRI);
 
+	DPRINTK("%s: id=%d \n", __func__, mri);
 	if ((mri & SUNI_MRI_TYPE_MASK) != SUNI_MRI_TYPE_VAL)
 	{
-		DPRINTK("id is not correct!\n\r");
+		DPRINTK("id is not correct!\n");
 		return -1;
 	}
 
@@ -357,6 +358,7 @@ int suni5384_init(struct atm_dev *dev, struct device_node *np,
 	struct device_node *node;
 	struct resource res;
 	struct suni_priv *suni;
+	printk(KERN_WARNING "%s: entering\n", __func__);
 
 	if (!(suni = kzalloc(sizeof(struct suni_priv), GFP_KERNEL)))
 		return -ENOMEM;
@@ -407,6 +409,7 @@ int suni5384_init(struct atm_dev *dev, struct device_node *np,
 		err =  -EFAULT;
 		goto out;
 	}
+	printk(KERN_DEBUG "%s: install atm PHY %d irq\n", __func__, suni->irq);
 
 	if (pm5384_init(dev, suni->phy_id, suni->port_width)) {
 		DPRINTK(KERN_ERR"pm5384 chipset initialization failed\n");
