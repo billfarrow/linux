@@ -122,12 +122,10 @@
 			upc-slot = < &upcs0 >;
 			ucc-handle = < &ucc3 >;
 
-			/* 155000000 - 0x93d1cc0 */
-			/* 50000000 - 0x2faf080 */
-			line_bitr = <0x93d1cc0>;
-			max_bitr = <0x93d1cc0>;
-			min_bitr = <0x2faf080>;
-			port-width = <1>;
+			line_bitr = <155000000>;
+			max_bitr = <155000000>;
+			min_bitr = <50000000>;
+			port-width = <1>;	// 0 = 8 bit Utopia, 1 = 16 bit Utopia
 		};
 
 	};
@@ -356,8 +354,8 @@
 		compatible = "fsl,qe";
 		ranges = <0x0 0xe0100000 0x00100000>;
 		reg = <0xe0100000 0x480>;
-		brg-frequency = <200000000>;
-		bus-frequency = <400000000>;
+		brg-frequency = <100000000>;
+		bus-frequency = <200000000>;
 		fsl,time-stamp1-clock = "qeclk";
 		fsl,time-stamp2-clock = "qeclk";
 		fsl,qe-num-riscs = <2>;

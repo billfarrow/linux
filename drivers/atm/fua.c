@@ -1870,11 +1870,8 @@ enum tran_res do_tx(struct sk_buff *skb)
 	vcc = ATM_SKB(skb)->vcc;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 	dev = &(vcc->dev->class_dev);
-	fua_debug(" enter [skb->dev=%p] [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p]\n",
-			skb->dev, fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev);
-//	fua_debug(" dev->archdata->dma_ops=%p\n", dev->archdata.dma_ops);
-//	fua_debug(" fua_vcc->vcc->dev->class_dev.archdata.dma_ops=%p\n", fua_vcc->vcc->dev->class_dev.archdata.dma_ops);
-//	fua_debug(" skb->dev->dev.archdata->dma_ops=%p\n", skb->dev->dev.archdata.dma_ops);
+	fua_debug(" enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p]\n",
+			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev);
 
 	if (!skb->len || skb->len > ATM_MAX_AAL5_PDU || !skb->data) {
 		printk("failed skb->len:%d\n", skb->len);
@@ -1885,20 +1882,14 @@ enum tran_res do_tx(struct sk_buff *skb)
 		return TRAN_DIE;
 	}
 
-	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	bd = get_free_tx_bd(fua_vcc);
-	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	if (bd == NULL) {
 		fua_debug("no bd\n");
 		return TRAN_FAIL;
 	}
-	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	bd->buf = dma_map_single(dev, skb->data, skb->len, DMA_TO_DEVICE);
-	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	bd->length = skb->len;
-	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	bd->status = ((bd->status & AAL5_TXBD_ATTR_W) | AAL5_TXBD_ATTR_I);
-	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 	if (!skb_shinfo(skb)->nr_frags && !skb_shinfo(skb)->frag_list) {
 		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
 		bd->status |= (AAL5_TXBD_ATTR_L | AAL5_TXBD_ATTR_R);
@@ -2418,7 +2409,12 @@ static int fua_open(struct atm_vcc *vcc)
 			error = -ENODEV;
 			goto out2;
 		}
+		fua_debug("PHY started\n");
 		atomic_add(1, &fua_dev->refcnt);
+	}
+	else
+	{
+		fua_debug("PHY already started\n");
 	}
 
 	set_bit(ATM_VF_READY, &vcc->flags);

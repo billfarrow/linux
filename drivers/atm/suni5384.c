@@ -172,13 +172,15 @@ static int suni_ioctl(struct atm_dev *dev,unsigned int cmd,void __user *arg)
 		case SONET_GETFRSENSE:
 			return -EINVAL;
 		case ATM_SETLOOP:
+			if (!capable(CAP_NET_ADMIN))
+				return -EPERM;
 			return set_loopback(dev,(int)(unsigned long)arg);
 		case ATM_GETLOOP:
-			return put_user(PRIV(dev)->loop_mode,(int *)arg) ?
+			return put_user(PRIV(dev)->loop_mode,(int __user *)arg) ?
 				-EFAULT : 0;
 		case ATM_QUERYLOOP:
 			return put_user(ATM_LM_LOC_PHY | ATM_LM_RMT_PHY,
-				(int *) arg) ? -EFAULT : 0;
+			    (int __user *) arg) ? -EFAULT : 0;
 		default:
 			return -ENOIOCTLCMD;
 	}

@@ -108,7 +108,7 @@ int upc_set_qe_mux_clock(int upc_num, const char *clk, enum clk_dir mode)
 		clock_mask <<= QE_CMXUPCR_RCS_SHIFT;
 	} else if (mode == CLK_TX) {
 		clock_bits <<= QE_CMXUPCR_TCS_SHIFT;
-		clock_mask <<= QE_CMXUPCR_RCS_SHIFT;
+		clock_mask <<= QE_CMXUPCR_TCS_SHIFT;
 	} else
 		clock_mask = QE_CMXUPCR_RCS_MASK;
 
