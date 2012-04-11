@@ -510,6 +510,7 @@ int upc_init(void)
 	const unsigned int *prop;
 	const char *sprop;
 	struct resource res;
+	printk(KERN_ERR"%s: probing UPC", __FUNCTION__);
 
 	ret = 0;
 	for (np = NULL; (np = of_find_node_by_type(np, "upc")) != NULL; ) {
@@ -523,6 +524,8 @@ int upc_init(void)
 
 		if (of_get_property(np, "fsl,utopia", NULL) != NULL)
 			upc_info[i].mode = UTOPIA;
+
+		printk(KERN_ERR"%s: found UPC device %d", __FUNCTION__, upc_info[i].upc_num);
 
 		if (of_address_to_resource(np, 0, &res))
 			return -EINVAL;
@@ -594,6 +597,8 @@ int upc_init(void)
 			if (ret)
 				printk(KERN_ERR"%s UPC bus %d error\n",
 					__FUNCTION__, upc_info[i].upc_num);
+			else
+				printk(KERN_ERR"%s: initialised UPC device %d", __FUNCTION__, upc_info[i].upc_num);
 		} else
 			printk(KERN_ERR"%s: Does not support protocols other \
 				than UTOPIA\n", __FUNCTION__);

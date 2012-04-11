@@ -124,8 +124,8 @@ static void __init mpc8358_pmcatm_setup_arch(void)
 	{
 		//if (qe_clock_is_brg(clk))
 		//	qe_setbrg(clk, rate, 1);
-		qe_setbrg(QE_BRG5, 25000000, 1);
-		qe_setbrg(QE_BRG6, 25000000, 1);
+		qe_setbrg(QE_BRG5, 48000000, 1);
+		qe_setbrg(QE_BRG6, 48000000, 1);
 
 		of_node_put(np);
 	}

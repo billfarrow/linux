@@ -163,7 +163,7 @@ int par_io_of_config(struct device_node *np)
 
 	ph = of_get_property(np, "pio-handle", NULL);
 	if (ph == NULL) {
-		printk(KERN_ERR "pio-handle not available\n");
+		printk(KERN_ERR "pio-handle not available for %s %s\n", np->name, np->full_name);
 		return -1;
 	}
 

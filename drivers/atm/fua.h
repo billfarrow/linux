@@ -30,7 +30,7 @@
 
 #ifdef FUA_DEBUG
 #define fua_debug(format, args...) \
-	printk(KERN_EMERG"%s:"format,__FUNCTION__,##args)
+	printk(KERN_DEBUG"fua: %s() "format,__FUNCTION__,##args)
 #define	fua_dump(format,args...) \
 	printk(format,##args)
 #else
@@ -39,9 +39,9 @@
 #endif
 
 #define fua_err(format,args...) \
-	printk(KERN_ERR format,##args);
+	printk(KERN_ERR "fua: "format,##args);
 #define fua_warning(format,args...) \
-	printk(KERN_WARNING format,##args);
+	printk(KERN_WARNING "fua: "format,##args);
 
 /* UCC ATM Event Register */
 #define UCCE_ATM_TIRU	0x04000000

@@ -42,6 +42,7 @@
 
 #include <linux/of_platform.h>
 #include <linux/of_device.h>
+#include <linux/of_net.h>
 #include <asm/dma-mapping.h>
 #include <asm/cacheflush.h>
 #include <asm/system.h>
@@ -623,7 +624,7 @@ int intq_mth_init(struct device * dev, intr_que_para_mth_tbl_t *intr_que,
 
 	intque_size = intent_cnt * sizeof(intr_que_entry_t);
 	if (intque_size > MAX_MTH_INTR_QUE_SIZE) {
-		fua_debug("Exceed the 16K memory boundary \
+		fua_warning("Exceed the 16K memory boundary \
 				limit in multi-thread mode\n");
 		return -EINVAL;
 	}
@@ -751,7 +752,7 @@ struct qe_bd *alloc_bds(bd_pool_t *bd_pool, int number)
 	}
 	if (i == bd_pool->number) {
 		spin_unlock(&bd_pool->lock);
-		fua_debug("Do not enough bds in bd_pool;"
+		fua_warning("Do not enough bds in bd_pool;"
 			"number:0x%x frees:0x%x request:0x%x\n",
 			bd_pool->number, bd_pool->frees, number);
 		return NULL;
@@ -1117,7 +1118,7 @@ int comm_mth_thread_init(comm_mth_para_tbl_t *comm_mth, int required_threads)
 	thread_entry = (thread_entry_t *)qe_muram_addr(offset);
 	for (i = 0; i < required_threads; i++) {
 		if ((snum = qe_get_snum()) < 0) {
-			fua_debug("Fail to get %dth snum\n", i);
+			fua_warning("Fail to get %dth snum\n", i);
 			return -EINVAL;
 		}
 		out_8(&thread_entry->snum, snum);
@@ -1217,16 +1218,16 @@ int subpg0_init(void *ucc_para_pg,
 	if (mthmode) {
 		int snum;
 		if ((snum = qe_get_snum()) < 0) {
-			fua_debug("fail to alloc snum\n");
+			fua_warning("fail to alloc snum\n");
 			return -EINVAL;
 		}
-		printk("Alloc snum:%d as atm rx ternimator\n", snum);
+		fua_debug("Alloc snum:%d as atm rx ternimator\n", snum);
 		subpg0->rx_term_snum = snum;
 		if ((snum = qe_get_snum()) < 0) {
-			fua_debug("fail to alloc snum\n");
+			fua_warning("fail to alloc snum\n");
 			return -EINVAL;
 		}
-		printk("Alloc snum:%d as atm tx ternimator\n", snum);
+		fua_debug("Alloc snum:%d as atm tx ternimator\n", snum);
 		subpg0->tx_term_snum = snum;
 
 		offset = qe_muram_alloc(sizeof(comm_mth_para_tbl_t), 0x10);
@@ -1552,7 +1553,7 @@ int open_tx(struct atm_vcc *vcc)
 	}
 	else
 	{
-		fua_debug("tx_qos->traffic_class: 0x%x\n", tx_qos->traffic_class);
+		fua_warning("tx_qos->traffic_class: 0x%x\n", tx_qos->traffic_class);
 		return -1;
 	}
 
@@ -1561,7 +1562,7 @@ int open_tx(struct atm_vcc *vcc)
 	/* alloc bds */
 	fua_vcc->txbase = alloc_bds(&f_p->bd_pool, fua_info->bd_per_channel);
 	if (!fua_vcc->txbase) {
-		fua_debug("failed in alloc bds\n");
+		fua_warning("failed in alloc bds\n");
 		return -ENOMEM;
 	}
 	fua_vcc->txcur = bd = fua_vcc->txbase;
@@ -1723,7 +1724,7 @@ int open_rx(struct atm_vcc *vcc)
 		|| (rx_qos->traffic_class == ATM_ANYCLASS)) {
 		fua_vcc->traffic_type = PCR;
 	} else {
-		fua_debug("rx_qos->traffic_class: 0x%x\n",
+		fua_warning("rx_qos->traffic_class: 0x%x\n",
 			rx_qos->traffic_class);
 		return -EINVAL;
 	}
@@ -1731,7 +1732,7 @@ int open_rx(struct atm_vcc *vcc)
 	fua_vcc->rx_intq_num = INT_RX_QUE;
 	fua_vcc->rxbase = alloc_bds(&f_p->bd_pool, fua_info->bd_per_channel);
 	if (!fua_vcc->rxbase) {
-		fua_debug("failed in alloc_bds num:0x%x\n",
+		fua_warning("failed in alloc_bds num:0x%x\n",
 			fua_info->bd_per_channel);
 		return -ENOMEM;
 	}
@@ -1743,7 +1744,7 @@ int open_rx(struct atm_vcc *vcc)
 		bd->length = 0;
 		bd->buf = (u32) kzalloc(fua_vcc->rbuf_size, GFP_DMA);
 		if (!bd->buf) {
-			fua_debug("fail to alloc static rx buf\n");
+			fua_warning("fail to alloc static rx buf\n");
 			goto out;
 		}
 		bd->buf = virt_to_phys((void *)bd->buf);
@@ -1770,7 +1771,7 @@ int open_rx(struct atm_vcc *vcc)
 		}
 	}
 	if (j == fua_info->max_channel) {
-		fua_debug("failed in alloc rct j:0x%x\n", j);
+		fua_warning("failed in alloc rct j:0x%x\n", j);
 		err = -ENOMEM;
 		goto out;
 	}
@@ -1870,11 +1871,11 @@ enum tran_res do_tx(struct sk_buff *skb)
 	vcc = ATM_SKB(skb)->vcc;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 	dev = &(vcc->dev->class_dev);
-	fua_debug(" enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p]\n",
+	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p]\n",
 			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev);
 
 	if (!skb->len || skb->len > ATM_MAX_AAL5_PDU || !skb->data) {
-		printk("failed skb->len:%d\n", skb->len);
+		fua_warning("failed skb->len:%d\n", skb->len);
 		if (vcc->pop)
 			vcc->pop(vcc, skb);
 		else
@@ -1884,26 +1885,26 @@ enum tran_res do_tx(struct sk_buff *skb)
 
 	bd = get_free_tx_bd(fua_vcc);
 	if (bd == NULL) {
-		fua_debug("no bd\n");
+		fua_warning("no bd\n");
 		return TRAN_FAIL;
 	}
 	bd->buf = dma_map_single(dev, skb->data, skb->len, DMA_TO_DEVICE);
 	bd->length = skb->len;
 	bd->status = ((bd->status & AAL5_TXBD_ATTR_W) | AAL5_TXBD_ATTR_I);
 	if (!skb_shinfo(skb)->nr_frags && !skb_shinfo(skb)->frag_list) {
-		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
+		fua_debug("line %d\n", __LINE__);
 		bd->status |= (AAL5_TXBD_ATTR_L | AAL5_TXBD_ATTR_R);
 		flush_dcache_range((size_t) bd,
 				(size_t) (bd + sizeof(struct qe_bd)));
 		if (fua_vcc->avcf)
 			atm_transmit(fua_vcc, 0, 0, 0);
 	} else {
-		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
+		fua_debug("line %d\n", __LINE__);
 		bd->status |= AAL5_TXBD_ATTR_R;
 		flush_dcache_range((size_t) bd,
 				(size_t) (bd + sizeof(struct qe_bd)));
 
-		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
+		fua_debug("line %d\n", __LINE__);
 		if (skb_shinfo(skb)->nr_frags) {
 			fua_debug("A sk_frag got\n");
 			for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
@@ -1931,7 +1932,7 @@ enum tran_res do_tx(struct sk_buff *skb)
 					atm_transmit(fua_vcc, 0, 0, 0);
 			}
 		}
-		printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
+		fua_debug("line %d\n", __LINE__);
 		if (skb_shinfo(skb)->frag_list) {
 			/* This should be a bug ?? */
 			struct sk_buff *list = skb_shinfo(skb)->frag_list;
@@ -1944,7 +1945,7 @@ enum tran_res do_tx(struct sk_buff *skb)
 		}
 	}
 
-	printk(KERN_WARNING "%s(): line %d\n", __func__, __LINE__);
+	fua_debug("line %d\n", __LINE__);
 	return TRAN_OK;
 }
 
@@ -1985,7 +1986,7 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	frame_len = bd->length;
 	skb = atm_alloc_charge(vcc, frame_len, GFP_ATOMIC);
 	if (!skb) {
-		fua_debug("Alloc sk_buff failed\n");
+		fua_warning("Alloc sk_buff failed\n");
 		discard_rx_bd(fua_vcc, bd);
 		atomic_inc(&vcc->stats->rx_drop);
 		return;
@@ -1994,6 +1995,12 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	ptr = skb_put(skb, frame_len);
 	sum_of_len = 0;
 	while (bd_tmp != bd) {
+		if (!bd_tmp) {
+			fua_err("buffer descriptor is NULL. bd: 0x%08x first: 0x%08x cur: 0x%08x base: 0x%08x\n",
+				 bd, fua_vcc->first, fua_vcc->rxcur, fua_vcc->rxbase);
+			dump_bd_pool(&fua_priv->bd_pool, 0);
+			break;
+		}
 		sum_of_len += bd_tmp->length;
 		if (sum_of_len > frame_len) {
 			memcpy(ptr, phys_to_virt(bd_tmp->buf),
@@ -2042,7 +2049,7 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		discard_rx_bd(fua_vcc, fua_vcc->rxcur);
 	}
 	if (intr_attr & INT_QUE_ENT_ATTR_BSY) {
-		printk("channel %d got busy intr because BDs are inadequate\n",
+		fua_warning("channel %d got busy intr because BDs are inadequate\n",
 			entry->channel_code);
 		/* At this point, the channel halted. RXBD ring full. need do somthing */
 		fua_debug("intr_entry->attr: 0x%x\n", entry->attr);
@@ -2296,31 +2303,31 @@ static int fua_send(struct atm_vcc *vcc, struct sk_buff *skb)
 	struct fua_vcc *fua_vcc;
 
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
-	fua_debug(" enter [atm_vcc=%p] [fua_vcc=%p] [atm_vcc->dev=%p]\n", vcc, fua_vcc, vcc->dev);
+	fua_debug("enter [atm_vcc=%p] [fua_vcc=%p] [atm_vcc->dev=%p]\n", vcc, fua_vcc, vcc->dev);
 	if (!fua_vcc) {
-		fua_debug("no fua_vcc\n");
+		fua_warning("no fua_vcc\n");
 		goto fail;
 	}
 	if (!skb) {
-		fua_debug("NULL SKB\n");
+		fua_warning("NULL SKB\n");
 		return -EINVAL;
 	}
 	ATM_SKB(skb)->vcc = vcc;
 
 	/* Only support AAL5 */
 	if (vcc->qos.aal != ATM_AAL5) {
-		fua_debug("A non_aal5 pdu\n");
+		fua_warning("A non_aal5 pdu\n");
 		goto fail;
 	}
 
 	if (skb->len > ATM_MAX_AAL5_PDU) {
-		fua_debug("Too big aal5 pdu %d\n", skb->len);
+		fua_warning("Too big aal5 pdu %d\n", skb->len);
 		goto fail;
 	}
 
 	res = do_tx(skb);
 	if (res == TRAN_FAIL) {
-		fua_debug("requeue vpi:%d vci:%d\n", vcc->vpi, vcc->vci);
+		fua_warning("requeue vpi:%d vci:%d\n", vcc->vpi, vcc->vci);
 		skb_queue_tail(&fua_vcc->tx_list, skb);
 		tasklet_schedule(&((struct fua_device *)(vcc->dev->dev_data))->fua_priv->task);
 	} else if (res == TRAN_OK) {
@@ -2349,14 +2356,14 @@ static int fua_open(struct atm_vcc *vcc)
 	if (!test_bit(ATM_VF_PARTIAL, &vcc->flags))
 		vcc->dev_data = NULL;
 	fua_dev = (struct fua_device *)dev->dev_data;
-	fua_debug(" enter [atm_vcc=%p] [atm_dev=%p] [fua_dev=%p]\n", vcc, dev, fua_dev);
+	fua_debug("enter [atm_vcc=%p] [atm_dev=%p] [fua_dev=%p]\n", vcc, dev, fua_dev);
 
 	vpi = vcc->vpi;
 	vci = vcc->vci;
 	if (vci != ATM_VPI_UNSPEC && vpi != ATM_VCI_UNSPEC)
 		set_bit(ATM_VF_ADDR, &vcc->flags);
 	if (vcc->qos.aal != ATM_AAL5) {
-		printk("The aal must be AAL5\n");
+		fua_warning("The aal must be AAL5\n");
 		return -EINVAL;
 	}
 	fua_debug("(itf %d): open %d.%d\n",
@@ -2364,7 +2371,7 @@ static int fua_open(struct atm_vcc *vcc)
 	if (!test_bit(ATM_VF_PARTIAL, &vcc->flags)) {
 		fua_vcc = kmalloc(sizeof(struct fua_vcc), GFP_KERNEL);
 		if (!fua_vcc) {
-			fua_debug("alloc fua_vcc failed\n");
+			fua_warning("alloc fua_vcc failed\n");
 			return -ENOMEM;
 		}
 		if (vcc->qos.aal == ATM_AAL5) {
@@ -2376,7 +2383,7 @@ static int fua_open(struct atm_vcc *vcc)
 		} else if (vcc->qos.aal == ATM_AAL2) {
 			fua_vcc->aal = AAL2;
 		} else {
-			fua_debug("aal: 0x%x\n", fua_vcc->aal);
+			fua_warning("aal: 0x%x\n", fua_vcc->aal);
 			return -1;
 		}
 		fua_vcc->status = 0;
@@ -2387,25 +2394,25 @@ static int fua_open(struct atm_vcc *vcc)
 		vcc->dev_data = (void *)fua_vcc;
 	}
 	if (vci == ATM_VPI_UNSPEC || vpi == ATM_VCI_UNSPEC) {
-		fua_debug("vci or vpi is not specified\n");
+		fua_warning("vci or vpi is not specified\n");
 		return 0;
 	}
 	if (vcc->qos.rxtp.traffic_class != ATM_NONE) {
 		if ((error = open_rx(vcc))) {
-			printk("open_rx failed\n");
+			fua_err("open_rx failed\n");
 			goto out;
 		}
 	}
 	if (vcc->qos.txtp.traffic_class != ATM_NONE) {
 		if ((error = open_tx(vcc))) {
-			printk("open_tx failed\n");
+			fua_err("open_tx failed\n");
 			goto out1;
 		}
 	}
 
 	if(atomic_read(&fua_dev->refcnt) == 0) {
 		if (!(dev->phy) || dev->phy->start(dev)) {
-			fua_debug("PHY failed in starting\n");
+			fua_err("PHY failed in starting\n");
 			error = -ENODEV;
 			goto out2;
 		}
@@ -2656,22 +2663,34 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	dev->ci_range.vci_bits = MAX_VCI_BITS;
 	dev->link_rate = ATM_OC3_PCR;
 
+//	mac_addr = of_get_mac_address(np);
+//	if (mac_addr)
+//		memcpy(dev->esi, mac_addr, 6);
+	dev->esi[0] = 0x00;
+	dev->esi[1] = 0x00;
+	dev->esi[2] = 0x0B;
+	dev->esi[3] = 0x50;
+	dev->esi[4] = 0x61;
+	dev->esi[5] = 0xDB;
+
+	fua_debug(" atm mac address %02x:%02x:%02x:%02x:%02x:%02x\n", dev->esi[0],dev->esi[1],dev->esi[2],dev->esi[3],dev->esi[4],dev->esi[5]);
+
 	phy_info = kmalloc(sizeof(struct phy_info),GFP_KERNEL);
 	if (phy_info == NULL) {
 		err = -ENOMEM;
-		fua_debug(" failed to kmalloc phy_info\n");
+		fua_err("failed to kmalloc phy_info\n");
 		goto out;
 	}
 
-	fua_debug(" calling suni5384_init()\n");
+	fua_debug("calling suni5384_init()\n");
 	if ((err = suni5384_init(dev, phy_node, &phy_info->upc_slot,
 			 &phy_info->port_width, &phy_info->phy_id,
 			 &phy_info->line_bitr, &phy_info->max_bitr,
 			 &phy_info->min_bitr)) != 0) {
-		fua_debug(" failed to init suni phy\n");
+		fua_err("failed to init suni phy\n");
 		goto out1;
 	}
-	fua_debug(" returned from suni5384_init()\n");
+	fua_debug("returned from suni5384_init()\n");
 
 	phy_info->prio_level = 2;
 	phy_info->max_iteration = 3;
@@ -2683,8 +2702,8 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	if (fua_info->upc_slot_tx[phy_info->upc_slot] == NULL) {
 		upc_slot_tx = kzalloc(sizeof(struct upc_slot_tx),GFP_KERNEL);
 		if (upc_slot_tx == NULL) {
+			fua_err("failed to kzalloc upc_slot_tx\n");
 			err = -ENOMEM;
-			fua_debug(" failed to kzalloc upc_slot_tx\n");
 			goto out1;
 		}
 		upc_slot_tx->slot = phy_info->upc_slot;
@@ -2705,8 +2724,8 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	if (fua_info->upc_slot_rx[phy_info->upc_slot] == NULL) {
 		upc_slot_rx = kzalloc(sizeof(struct upc_slot_rx),GFP_KERNEL);
 		if(upc_slot_rx == NULL) {
+			fua_err("failed to kzalloc upc_slot_rx\n");
 			err = -ENOMEM;
-			fua_debug(" failed to kzalloc upc_slot_rx\n");
 			goto out2;
 		}
 		upc_slot_rx->slot = phy_info->upc_slot;
@@ -2724,8 +2743,8 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 
 	fua_dev = kzalloc(sizeof(struct fua_device), GFP_KERNEL);
 	if (fua_dev == NULL) {
+		fua_err("failed to kzalloc fua_device\n");
 		err = -ENOMEM;
-		fua_debug(" failed to kzalloc fua_device\n");
 		goto out3;
 	}
 	fua_dev->u_id = fua_info->uf_info.ucc_num % 2 ? 1 : 0;
@@ -2737,7 +2756,7 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	atomic_set(&fua_dev->refcnt, 0);
 	dev->dev_data = fua_dev;
 
-	fua_debug(" registered [atm_dev=%p] [fua_dev=%p] [fua_priv=%p]\n", dev, fua_dev, f_p);
+	fua_debug("registered [atm_dev=%p] [fua_dev=%p] [fua_priv=%p]\n", dev, fua_dev, f_p);
 	return 0;
 out3:
 	kfree(upc_slot_rx);
@@ -2747,7 +2766,7 @@ out1:
 	kfree(phy_info);
 out:
 	atm_dev_deregister(dev);
-	fua_debug(" failed with error: %d \n", err);
+	fua_warning("failed with error: %d \n", err);
 	return err;
 }
 
@@ -2886,8 +2905,8 @@ static int fua_struct_init(struct device *dev, struct fua_private *f_p)
 	spin_lock_init(&f_p->lock);
 	f_p->subblock = ucc_fast_get_qe_cr_subblock(fua_info->uf_info.ucc_num);
 
-	fua_debug(" initialising !!\n");
-	fua_debug(" [dev=%p] [dev->archdata->dma_ops=%p]\n", dev, dev->archdata.dma_ops);
+	fua_debug("initialising !!\n");
+	fua_debug("[dev=%p] [dev->archdata->dma_ops=%p]\n", dev, dev->archdata.dma_ops);
 
 	if (fua_info->max_channel > MAX_INTERNAL_CHANNEL_CODE) {
 		dma_addr_t addr;
@@ -3088,7 +3107,7 @@ static int check_phy_node(struct device_node *phy, struct device_node * ucc)
 			upc = of_get_parent(upc_slot);
 			prop = of_get_property(upc, "device-id", NULL);
 			if ((prop == NULL) || ((*prop - 1) + ucc_num) % 2) {
-				printk(KERN_ERR"%s UCC PHY attach \
+				fua_err(KERN_ERR"%s UCC PHY attach \
 					to the wrong UPC\n",__FUNCTION__);
 				err = -EFAULT;
 			} else
@@ -3115,7 +3134,7 @@ static int fua_probe(struct platform_device *ofdev)
 	int ucc_num = -1;
 	int i, err;
 
-	printk(KERN_WARNING "%s(): entering [dev=%p]\n", __func__, device);
+	fua_debug("entering [dev=%p]\n", device);
 
 	err = 0;
 	np = ofdev->dev.of_node;

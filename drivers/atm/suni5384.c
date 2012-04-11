@@ -129,6 +129,52 @@ static int fetch_stats(struct atm_dev *dev, struct sonet_stats __user *arg, int 
 	return error ? -EFAULT : 0;
 }
 
+
+#define HANDLE_FLAG(flag,reg,bit) \
+  if (todo & flag) { \
+    if (set) PUT(GET(reg) | bit,reg); \
+    else PUT(GET(reg) & ~bit,reg); \
+    todo &= ~flag; \
+  }
+
+
+static int change_diag(struct atm_dev *dev,void __user *arg,int set)
+{
+	int todo;
+
+	if (get_user(todo,(int __user *)arg)) return -EFAULT;
+	HANDLE_FLAG(SONET_INS_SBIP,TSOP_DIAG,SUNI_TSOP_DIAG_DBIP8);
+	HANDLE_FLAG(SONET_INS_LBIP,TLOP_DIAG,SUNI_TLOP_DIAG_DBIP);
+	HANDLE_FLAG(SONET_INS_PBIP,TPOP_CD,SUNI_TPOP_DIAG_DB3);
+	HANDLE_FLAG(SONET_INS_FRAME,RSOP_CIE,SUNI_RSOP_CIE_FOOF);
+	HANDLE_FLAG(SONET_INS_LAIS,TSOP_CTRL,SUNI_TSOP_CTRL_LAIS);
+	HANDLE_FLAG(SONET_INS_PAIS,TPOP_CD,SUNI_TPOP_DIAG_PAIS);
+	HANDLE_FLAG(SONET_INS_LOS,TSOP_DIAG,SUNI_TSOP_DIAG_DLOS);
+//	HANDLE_FLAG(SONET_INS_HCS,TACP_CS,SUNI_TACP_CS_DHCS);
+	return put_user(todo,(int __user *)arg) ? -EFAULT : 0;
+}
+
+
+#undef HANDLE_FLAG
+
+
+static int get_diag(struct atm_dev *dev,void __user *arg)
+{
+	int set;
+
+	set = 0;
+	if (GET(TSOP_DIAG) & SUNI_TSOP_DIAG_DBIP8) set |= SONET_INS_SBIP;
+	if (GET(TLOP_DIAG) & SUNI_TLOP_DIAG_DBIP) set |= SONET_INS_LBIP;
+	if (GET(TPOP_CD) & SUNI_TPOP_DIAG_DB3) set |= SONET_INS_PBIP;
+	/* SONET_INS_FRAME is one-shot only */
+	if (GET(TSOP_CTRL) & SUNI_TSOP_CTRL_LAIS) set |= SONET_INS_LAIS;
+	if (GET(TPOP_CD) & SUNI_TPOP_DIAG_PAIS) set |= SONET_INS_PAIS;
+	if (GET(TSOP_DIAG) & SUNI_TSOP_DIAG_DLOS) set |= SONET_INS_LOS;
+//	if (GET(TACP_CS) & SUNI_TACP_CS_DHCS) set |= SONET_INS_HCS;
+	return put_user(set,(int __user *)arg) ? -EFAULT : 0;
+}
+
+
 static int set_loopback(struct atm_dev *dev, int mode)
 {
 	unsigned char control;
@@ -151,24 +197,83 @@ static int set_loopback(struct atm_dev *dev, int mode)
 	return 0;
 }
 
+/*
+ * SONET vs. SDH Configuration
+ *
+ * Z0INS (register 0x06): 0 for SONET, 1 for SDH
+ * ENSS (register 0x3D): 0 for SONET, 1 for SDH
+ * LEN16 (register 0x28): 0 for SONET, 1 for SDH (n/a for S/UNI 155 QUAD)
+ * LEN16 (register 0x50): 0 for SONET, 1 for SDH (n/a for S/UNI 155 QUAD)
+ * S[1:0] (register 0x46): 00 for SONET, 10 for SDH
+ */
+
+static int set_sonet(struct atm_dev *dev)
+{
+	REG_CHANGE(SUNI_TPOP_APM_S, SUNI_TPOP_APM_S_SHIFT,
+		   SUNI_TPOP_S_SONET, TPOP_APM);
+
+	return 0;
+}
+
+static int set_sdh(struct atm_dev *dev)
+{
+	REG_CHANGE(SUNI_TPOP_APM_S, SUNI_TPOP_APM_S_SHIFT,
+		   SUNI_TPOP_S_SDH, TPOP_APM);
+
+	return 0;
+}
+
+
+static int get_framing(struct atm_dev *dev, void __user *arg)
+{
+	int framing;
+	unsigned char s;
+
+
+	s = (GET(TPOP_APM) & SUNI_TPOP_APM_S) >> SUNI_TPOP_APM_S_SHIFT;
+	if (s == SUNI_TPOP_S_SONET)
+		framing = SONET_FRAME_SONET;
+	else
+		framing = SONET_FRAME_SDH;
+
+	return put_user(framing, (int __user *) arg) ? -EFAULT : 0;
+}
+
+static int set_framing(struct atm_dev *dev, void __user *arg)
+{
+	int mode;
+
+	if (get_user(mode, (int __user *) arg))
+		return -EFAULT;
+
+	if (mode == SONET_FRAME_SONET)
+		return set_sonet(dev);
+	else if (mode == SONET_FRAME_SDH)
+		return set_sdh(dev);
+
+	return -EINVAL;
+}
+
+
 static int suni_ioctl(struct atm_dev *dev,unsigned int cmd,void __user *arg)
 {
+	printk(KERN_WARNING "%s(): cmd %d\n", __func__, cmd);
 	switch (cmd) {
 		case SONET_GETSTATZ:
 		case SONET_GETSTAT:
 			return fetch_stats(dev, arg, cmd == SONET_GETSTATZ);
 		case SONET_SETDIAG:
-			return -ENOIOCTLCMD;
+			return change_diag(dev,arg,1);
 		case SONET_CLRDIAG:
-			return -ENOIOCTLCMD;
+			return change_diag(dev,arg,0);
 		case SONET_GETDIAG:
-			return -ENOIOCTLCMD;
+			return get_diag(dev,arg);
 		case SONET_SETFRAMING:
-			if (arg != SONET_FRAME_SONET) return -EINVAL;
-			return 0;
+			if (!capable(CAP_NET_ADMIN))
+				return -EPERM;
+			return set_framing(dev, arg);
 		case SONET_GETFRAMING:
-			return put_user(SONET_FRAME_SONET,(int *)arg) ?
-				-EFAULT : 0;
+			return get_framing(dev, arg);
 		case SONET_GETFRSENSE:
 			return -EINVAL;
 		case ATM_SETLOOP:
@@ -274,8 +379,8 @@ static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 	/* Reset the device */
 	PUT(SUNI_MRI_RESET, MRI);
 
-	/* Wait */
-	for (i=0; i<10000; i++);
+	/* Reset pulse must be at least 100ns */
+	udelay(1);
 
 	/* Clear reset */
 	PUT(0, MRI);
@@ -295,7 +400,7 @@ static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 	PUT(0, TFCLK_RST);
 
 	/* Wait */
-	for (i=0; i<10000; i++);
+	udelay(1);
 
 	/* Set RXCP FIFO reset */
 	PUT(SUNI_RXCP_FUCC_FIFORST | SUNI_RXCP_FUCC_RCALEVEL0, RXCP_FUCC);
@@ -304,7 +409,7 @@ static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 	PUT(SUNI_TXCP_CFG1_FIFORST | SUNI_TXCP_CFG1_HCSADD, TXCP_CFG1);
 
 	/* Wait */
-	for (i=0; i<10000; i++);
+	udelay(1);
 
 	/* Clear RXCP FIFO reset */
 	PUT(SUNI_RXCP_FUCC_RCALEVEL0, RXCP_FUCC);

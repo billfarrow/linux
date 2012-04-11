@@ -448,6 +448,7 @@
 			pio-handle = < &pio3 >;
 			multithread;
 			threads = <16>;
+			local-mac-address = [ 00 00 0B 50 61 DB ];
 		};
 
 		upc@2e00 {
