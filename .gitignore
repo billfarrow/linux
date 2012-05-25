@@ -84,3 +84,6 @@ GTAGS
 *.orig
 *~
 \#*#
+
+# device tree blobs
+arch/*/boot/*.dtb

@@ -532,9 +532,9 @@ int upc_init(void)
 		upc_info[i].regs = res.start;
 
 		sprop = of_get_property(np, "fsl,tx-clock", NULL);
-		upc_info[i].rx_clock = sprop;
-		sprop = of_get_property(np, "fsl,rx-clock", NULL);
 		upc_info[i].tx_clock = sprop;
+		sprop = of_get_property(np, "fsl,rx-clock", NULL);
+		upc_info[i].rx_clock = sprop;
 		sprop = of_get_property(np, "fsl,internal-clock", NULL);
 		upc_info[i].internal_clock = sprop;
 
