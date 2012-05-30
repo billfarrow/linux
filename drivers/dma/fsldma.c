@@ -910,7 +910,7 @@ static void fsl_chan_xfer_ld_queue(struct fsldma_chan *chan)
 	 * don't need to do any work at all
 	 */
 	if (list_empty(&chan->ld_pending)) {
-		chan_dbg(chan, "no pending LDs\n");
+//		chan_dbg(chan, "no pending LDs\n");
 		return;
 	}
 
