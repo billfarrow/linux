@@ -90,6 +90,7 @@ static void suni_hz(unsigned long from_timer)
 	for (walk = sunis; walk; walk = walk->next) {
 		dev = walk->dev;
 		stats = &walk->sonet_stats;
+//		printk(KERN_DEBUG "suni_hz polling phy%d\n", walk->phy_id);
 
 		PUT(0, MRI); /* Latch counters */
 		udelay(1);
@@ -112,6 +113,10 @@ static void suni_hz(unsigned long from_timer)
 		ADD_LIMITED(tx_cells,(GET(TXCP_TCCL) & 0xff) |
 			((GET(TXCP_TCC) & 0xff) << 8) |
 			((GET(TXCP_TCCM) & 7) << 16));
+		// hijack this parameter to record idle cells received
+		ADD_LIMITED(corr_hcs,(GET(RXCP_ICCL) & 0xff) |
+			((GET(RXCP_ICC) & 0xff) << 8) |
+			((GET(RXCP_ICCM) & 7) << 16));
 	}
 	if (from_timer) mod_timer(&poll_timer,jiffies+HZ);
 }
@@ -194,6 +199,7 @@ static int set_loopback(struct atm_dev *dev, int mode)
 	}
 	PUT(control,CMC2);
 	PRIV(dev)->loop_mode = mode;
+	printk(KERN_DEBUG "%s():%d loop_mode 0x%x \n", __func__,__LINE__,PRIV(dev)->loop_mode);
 	return 0;
 }
 
@@ -257,7 +263,7 @@ static int set_framing(struct atm_dev *dev, void __user *arg)
 
 static int suni_ioctl(struct atm_dev *dev,unsigned int cmd,void __user *arg)
 {
-	printk(KERN_WARNING "%s(): cmd %d\n", __func__, cmd);
+	printk(KERN_DEBUG "%s(): cmd %d\n", __func__, cmd);
 	switch (cmd) {
 		case SONET_GETSTATZ:
 		case SONET_GETSTAT:
@@ -281,6 +287,7 @@ static int suni_ioctl(struct atm_dev *dev,unsigned int cmd,void __user *arg)
 				return -EPERM;
 			return set_loopback(dev,(int)(unsigned long)arg);
 		case ATM_GETLOOP:
+			printk(KERN_DEBUG "%s():%d loop_mode 0x%x \n", __func__,__LINE__,PRIV(dev)->loop_mode);
 			return put_user(PRIV(dev)->loop_mode,(int __user *)arg) ?
 				-EFAULT : 0;
 		case ATM_QUERYLOOP:
@@ -325,7 +332,7 @@ static int suni_start(struct atm_dev *dev)
 	if (dev->signal == ATM_PHY_SIG_LOST)
 		DPRINTK(KERN_WARNING "%s(itf %d): no signal\n",dev->type,
 			dev->number);
-	PRIV(dev)->loop_mode = ATM_LM_NONE;
+//	PRIV(dev)->loop_mode = ATM_LM_NONE;
 	suni_hz(0); /* clear SUNI counters */
 	(void) fetch_stats(dev, NULL, 1); /* clear kernel counters */
 
@@ -341,16 +348,22 @@ static int suni_start(struct atm_dev *dev)
 
 static int suni_stop(struct atm_dev *dev)
 {
-	struct suni_priv **walk;
+	struct suni_priv *walk;
+	struct suni_priv *prev = NULL;
 	unsigned long flags;
 
 	/* let SAR driver worry about stopping interrupts */
 	spin_lock_irqsave(&sunis_lock,flags);
-	for (walk = &sunis; *walk != PRIV(dev);
-		walk = &(*walk)->next);
-	*walk = (*walk)->next;
-	if (!sunis) del_timer_sync(&poll_timer);
+	for (walk = sunis; walk != PRIV(dev); prev = walk, walk = PRIV(walk->dev)->next)
+		;
+	if (prev == NULL)
+		sunis = NULL;
+	else
+		PRIV(prev->dev)->next = PRIV(walk->dev)->next;
+	if (!sunis)
+		del_timer_sync(&poll_timer);
 	spin_unlock_irqrestore(&sunis_lock,flags);
+	kfree(PRIV(dev));
 
 	return 0;
 }
@@ -369,7 +382,7 @@ static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 	/* Make sure id correct */
 	mri = GET(MRI);
 
-	DPRINTK("%s: id=%d \n", __func__, mri);
+	printk(KERN_DEBUG "%s(): id=%d \n", __func__, mri);
 	if ((mri & SUNI_MRI_TYPE_MASK) != SUNI_MRI_TYPE_VAL)
 	{
 		DPRINTK("id is not correct!\n");
@@ -380,7 +393,7 @@ static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 	PUT(SUNI_MRI_RESET, MRI);
 
 	/* Reset pulse must be at least 100ns */
-	udelay(1);
+	udelay(1000);
 
 	/* Clear reset */
 	PUT(0, MRI);
@@ -400,7 +413,7 @@ static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 	PUT(0, TFCLK_RST);
 
 	/* Wait */
-	udelay(1);
+	udelay(1000);
 
 	/* Set RXCP FIFO reset */
 	PUT(SUNI_RXCP_FUCC_FIFORST | SUNI_RXCP_FUCC_RCALEVEL0, RXCP_FUCC);
@@ -409,7 +422,7 @@ static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 	PUT(SUNI_TXCP_CFG1_FIFORST | SUNI_TXCP_CFG1_HCSADD, TXCP_CFG1);
 
 	/* Wait */
-	udelay(1);
+	udelay(1000);
 
 	/* Clear RXCP FIFO reset */
 	PUT(SUNI_RXCP_FUCC_RCALEVEL0, RXCP_FUCC);
@@ -465,7 +478,7 @@ int suni5384_init(struct atm_dev *dev, struct device_node *np,
 	struct device_node *node;
 	struct resource res;
 	struct suni_priv *suni;
-	printk(KERN_WARNING "%s: entering\n", __func__);
+	printk(KERN_DEBUG "%s: entering\n", __func__);
 
 	if (!(suni = kzalloc(sizeof(struct suni_priv), GFP_KERNEL)))
 		return -ENOMEM;
@@ -516,7 +529,7 @@ int suni5384_init(struct atm_dev *dev, struct device_node *np,
 		err =  -EFAULT;
 		goto out;
 	}
-	printk(KERN_DEBUG "%s: install atm PHY %d irq\n", __func__, suni->irq);
+	printk(KERN_DEBUG "%s: install atm PHY on slot %d with irq %d\n", __func__, *upc_slot, suni->irq);
 
 	if (pm5384_init(dev, suni->phy_id, suni->port_width)) {
 		DPRINTK(KERN_ERR"pm5384 chipset initialization failed\n");

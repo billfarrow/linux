@@ -1545,6 +1545,8 @@ int open_tx(struct atm_vcc *vcc)
 	fua_info = f_p->fua_info;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 	tx_qos = &vcc->qos.txtp;
+	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
+			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
 
 	if ((tx_qos->traffic_class == ATM_CBR)
 		|| (tx_qos->traffic_class == ATM_UBR)
@@ -1718,6 +1720,8 @@ int open_rx(struct atm_vcc *vcc)
 	fua_info = f_p->fua_info;
 	fua_vcc = (struct fua_vcc *)vcc->dev_data;
 	rx_qos = &vcc->qos.rxtp;
+	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
+			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
 
 	if ((rx_qos->traffic_class == ATM_CBR)
 		|| (rx_qos->traffic_class == ATM_UBR)
@@ -1871,8 +1875,8 @@ enum tran_res do_tx(struct sk_buff *skb)
 	vcc = ATM_SKB(skb)->vcc;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 	dev = &(vcc->dev->class_dev);
-	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p]\n",
-			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev);
+	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
+			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
 
 	if (!skb->len || skb->len > ATM_MAX_AAL5_PDU || !skb->data) {
 		fua_warning("failed skb->len:%d\n", skb->len);
@@ -1977,9 +1981,12 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	int sum_of_len;
 	struct qe_bd *bd_tmp;
 	struct sk_buff *skb;
+	struct qe_bd *bd_prev;
 
 	vcc = fua_priv->rx_vcc[channel_code];
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
+	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
+			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
 
 	bd_tmp = fua_vcc->first;
 	fua_vcc->first = NULL;
@@ -1991,15 +1998,26 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 		atomic_inc(&vcc->stats->rx_drop);
 		return;
 	}
+	if (!bd_tmp) {
+//		fua_warning("Invalid Buffer Descriptor. bd: 0x%08x\n", bd_tmp);
+//		discard_rx_bd(fua_vcc, bd);
+//		atomic_inc(&vcc->stats->rx_drop);
+//		return;
+	}
 	ATM_SKB(skb)->vcc = vcc;
 	ptr = skb_put(skb, frame_len);
 	sum_of_len = 0;
 	while (bd_tmp != bd) {
 		if (!bd_tmp) {
-			fua_err("buffer descriptor is NULL. bd: 0x%08x first: 0x%08x cur: 0x%08x base: 0x%08x\n",
-				 bd, fua_vcc->first, fua_vcc->rxcur, fua_vcc->rxbase);
+			fua_err("buffer descriptor is NULL. bd: 0x%08x bd_prev: 0x%08x cur: 0x%08x base: 0x%08x\n",
+				 bd, bd_prev, fua_vcc->rxcur, fua_vcc->rxbase);
 			dump_bd_pool(&fua_priv->bd_pool, 0);
-			break;
+			dump_bd(bd, 0);
+			dump_bd(bd_prev, 0);
+//			break;
+			discard_rx_bd(fua_vcc, bd);
+			atomic_inc(&vcc->stats->rx_drop);
+			return;
 		}
 		sum_of_len += bd_tmp->length;
 		if (sum_of_len > frame_len) {
@@ -2014,6 +2032,7 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 		bd_tmp->status = (AAL5_RXBD_ATTR_E
 					| AAL5_RXBD_ATTR_I
 					| (bd_tmp->status & AAL5_RXBD_ATTR_W));
+		bd_prev = bd_tmp;
 		bd_tmp =
 			bd_get_next(bd_tmp, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 	}
@@ -2026,6 +2045,7 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	vcc->push(vcc, skb);
 	atomic_inc(&vcc->stats->rx);
 
+//	fua_warning("%s() LINE=%d\n", __func__,__LINE__);
 	return;
 }
 
@@ -2097,8 +2117,7 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 							AAL5_RXBD_ATTR_W);
 			if (bd->status & AAL5_RXBD_ATTR_L) {
 				if (!fua_vcc->first)
-					discard_rx_bd(fua_vcc,
-						fua_vcc->rxcur);
+					discard_rx_bd(fua_vcc, fua_vcc->rxcur);
 				do_rx(fua_priv, entry->channel_code, bd);
 			}
 		}
@@ -2195,6 +2214,9 @@ void handle_intr_que(struct fua_private *fua_priv, int que, int overflow)
 	return;
 }
 
+//static uint32_t ducce[] = {0, 0, 0, 0, 0, 0};
+//static uint32_t ducci = 0;
+
 void handle_intr(struct fua_private *fua_priv)
 {
 	int event;
@@ -2202,7 +2224,13 @@ void handle_intr(struct fua_private *fua_priv)
 
 	spin_lock_irqsave(&fua_priv->lock, flags);
 	event = fua_priv->intr_event;
+	fua_priv->intr_event = 0;	// clear this so the ISR can re-fill the bits
 	spin_unlock_irqrestore(&fua_priv->lock, flags);
+
+	fua_debug("intr_event = 0x%08x\n", event);
+//	fua_debug("intr_event = 0x%08x : %08x %08x %08x %08x %08x %08x\n", event, ducce[0], ducce[1], ducce[2], ducce[3], ducce[4], ducce[5]);
+//	memset(ducce, 0, sizeof(ducce));
+//	ducci = 0;
 
 	if (event & UCCE_ATM_TIRU) {
 		/* only occur in transmit internal rate mode */
@@ -2290,8 +2318,13 @@ static irqreturn_t fua_int_handler(int irq, void *dev_id)
 	f_p = (struct fua_private *)dev_id;
 	uccm = in_be32(f_p->uccf->p_uccm);
 	ucce = in_be32(f_p->uccf->p_ucce);
-	f_p->intr_event = ucce & uccm;
-	out_be32(f_p->uccf->p_ucce, 0xFFFFFFFF);
+	f_p->intr_event |= (ucce & uccm);
+	//out_be32(f_p->uccf->p_ucce, 0xFFFFFFFF);
+	out_be32(f_p->uccf->p_ucce, ucce);	// only clear bits that have been read
+//	printk(KERN_WARNING "fua Interrupt: ucce = 0x%08x\n", ucce);
+//	printk(KERN_WARNING "fua Interrupt: ucce[0x%08x] = 0x%08x uccm = 0x%08x\n", f_p->uccf->p_uccm, ucce, uccm);
+//	if (ducci < sizeof(ducce))
+//		ducce[ducci++] = ucce;
 
 	tasklet_schedule(&f_p->task);
 	return IRQ_HANDLED;
@@ -2303,7 +2336,7 @@ static int fua_send(struct atm_vcc *vcc, struct sk_buff *skb)
 	struct fua_vcc *fua_vcc;
 
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
-	fua_debug("enter [atm_vcc=%p] [fua_vcc=%p] [atm_vcc->dev=%p]\n", vcc, fua_vcc, vcc->dev);
+	fua_debug("enter [atm_vcc=%p] [fua_vcc=%p] [atm_vcc->dev=%p] [dma_ops=%p]\n", vcc, fua_vcc, vcc->dev, vcc->dev->class_dev.archdata.dma_ops);
 	if (!fua_vcc) {
 		fua_warning("no fua_vcc\n");
 		goto fail;
@@ -2356,7 +2389,7 @@ static int fua_open(struct atm_vcc *vcc)
 	if (!test_bit(ATM_VF_PARTIAL, &vcc->flags))
 		vcc->dev_data = NULL;
 	fua_dev = (struct fua_device *)dev->dev_data;
-	fua_debug("enter [atm_vcc=%p] [atm_dev=%p] [fua_dev=%p]\n", vcc, dev, fua_dev);
+	fua_debug("enter [atm_vcc=%p] [atm_dev=%p] [fua_dev=%p] [dma_ops=%p]\n", vcc, dev, fua_dev, dev->class_dev.archdata.dma_ops);
 
 	vpi = vcc->vpi;
 	vci = vcc->vci;
@@ -2417,12 +2450,12 @@ static int fua_open(struct atm_vcc *vcc)
 			goto out2;
 		}
 		fua_debug("PHY started\n");
-		atomic_add(1, &fua_dev->refcnt);
 	}
 	else
 	{
 		fua_debug("PHY already started\n");
 	}
+	atomic_add(1, &fua_dev->refcnt);
 
 	set_bit(ATM_VF_READY, &vcc->flags);
 	list_add(&fua_vcc->list, &fua_dev->vcc_list);
@@ -2455,6 +2488,7 @@ static void fua_close(struct atm_vcc *vcc)
 	kfree(fua_vcc);
 	clear_bit(ATM_VF_ADDR, &vcc->flags);
 	if (atomic_sub_return(1, &fua_dev->refcnt) == 0) {
+		fua_debug("stopping the phy\n");
 		if(dev->phy)
 			dev->phy->stop(dev);
 	}
@@ -2547,6 +2581,7 @@ static void fua_atm_device_remove(struct fua_device *fua_dev);
 /* Is called by atm_dev_put which is called by atm_dev_deregisger */
 void fua_dev_close(struct atm_dev *dev)
 {
+	fua_debug("stopping the phy\n");
 	if (dev->phy)
 		dev->phy->stop(dev);
 	if (dev->phy_data)
@@ -2734,7 +2769,7 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 		upc_slot_rx->rb2b = 1;
 		upc_slot_rx->rudc = 0;
 		upc_slot_rx->rxpw = phy_info->port_width;
-		upc_slot_rx->rxp = 0;
+		upc_slot_rx->rxp = 1;	// check parity error signal from PHY
 		fua_info->upc_slot_rx[phy_info->upc_slot] = upc_slot_rx;
 	} else {
 		upc_slot_rx = fua_info->upc_slot_rx[phy_info->upc_slot];
@@ -2756,7 +2791,9 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	atomic_set(&fua_dev->refcnt, 0);
 	dev->dev_data = fua_dev;
 
-	fua_debug("registered [atm_dev=%p] [fua_dev=%p] [fua_priv=%p]\n", dev, fua_dev, f_p);
+//	fua_debug("registered [atm_dev=%p] [fua_dev=%p] [fua_priv=%p]\n", dev, fua_dev, f_p);
+	printk(KERN_INFO "Created ATM device UPC%d slot%d connected to %s %d bit PHY%d\n", fua_dev->u_id, phy_info->upc_slot,
+		(upc_slot_rx->rmp?"multi":"single"), (phy_info->port_width?16:8), phy_info->phy_id );
 	return 0;
 out3:
 	kfree(upc_slot_rx);
@@ -2796,6 +2833,7 @@ static int fua_priv_init(struct device * dev, struct fua_private * f_p)
 
 	if(bd_pool_init(&f_p->bd_pool,fua_info->max_bd))
 		return -EFAULT;
+	dump_bd_pool(&f_p->bd_pool, 0);
 
 	i = j = 0;
 	list_for_each_safe(p, n, &f_p->dev_list) {

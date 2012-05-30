@@ -210,6 +210,7 @@ int qe_setbrg(enum qe_clock brg, unsigned int rate, unsigned int multiplier)
 		return -EINVAL;
 
 	divisor = qe_get_brg_clk() / (rate * multiplier);
+	printk(KERN_WARNING "%s(): brg=%d rate=%d mult=%d qeclk=%d div=%d\n", __func__,brg,rate,multiplier,qe_get_brg_clk(),divisor);
 
 	if (divisor > QE_BRGC_DIVISOR_MAX + 1) {
 		div16 = QE_BRGC_DIV16;
@@ -222,11 +223,15 @@ int qe_setbrg(enum qe_clock brg, unsigned int rate, unsigned int multiplier)
 	if (!div16 && (divisor & 1) && (divisor > 3))
 		divisor++;
 
+	// Put the BRG into reset before programming and enabling the new divisor (Section 5.7.1 BRGC Programming Limitations)
+	out_be32(&qe_immr->brg.brgc[brg - QE_BRG1], 0x00010000);
+
 	tempval = ((divisor - 1) << QE_BRGC_DIVISOR_SHIFT) |
 		QE_BRGC_ENABLE | div16;
 
 	out_be32(&qe_immr->brg.brgc[brg - QE_BRG1], tempval);
 
+	printk(KERN_WARNING "%s(): div16=%d div=%d tempval=0x%08x\n", __func__, div16,divisor,tempval);
 	return 0;
 }
 EXPORT_SYMBOL(qe_setbrg);

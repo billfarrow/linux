@@ -315,11 +315,11 @@ typedef	struct	rct_entry {
 	u16	pmt_rbd_base;
 	u16	rbd_base_pm;
 } __attribute__((packed)) rct_entry_t;
-#define RCT_ENTRY_ATTR_GBL	0x20000000
+#define RCT_ENTRY_ATTR_GBL	0x20000000	/* Global: enable snooping of BD, Interrupt Queues, and free buffer pool */
 #define RCT_ENTRY_ATTR_CETM	0x04000000
 #define RCT_ENTRY_ATTR_DTB	0x02000000
 #define RCT_ENTRY_ATTR_BDB	0x01000000
-#define RCT_ENTRY_ATTR_BUFM	0x00400000
+#define RCT_ENTRY_ATTR_BUFM	0x00400000	/* Buffer Mode: 0=static buffers, 1=global buffer pool */
 #define RCT_ENTRY_ATTR_SEGF	0x00200000
 #define RCT_ENTRY_ATTR_ENDF	0x00100000
 #define RCT_ENTRY_ATTR_INF	0x00004000

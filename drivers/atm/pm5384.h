@@ -96,6 +96,9 @@
 #define SUNI_RXCP_RCCL		0x6B	/* RACP Receive Cell Counter LSB */
 #define SUNI_RXCP_RCC		0x6C	/* RACP Receive Cell Counter */
 #define SUNI_RXCP_RCCM		0x6D	/* RACP Receive Cell Counter MSB */
+#define SUNI_RXCP_ICCL		0x6E	/* RACP Idle Cell Counter LSB */
+#define SUNI_RXCP_ICC		0x6F	/* RACP Idle Cell Counter */
+#define SUNI_RXCP_ICCM		0x70	/* RACP Idle Cell Counter MSB */
 
 #define SUNI_TXCP_CFG1		0x80	/* TXCP Configuration 1 */
 #define SUNI_TXCP_CFG2		0x81	/* TXCP Configuration 2 */
