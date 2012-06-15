@@ -97,6 +97,8 @@ struct fua_info fua_primary_info = {
 	},
 };
 
+void dump_tct(tct_entry_t * tct, u32 aal);
+
 /*************************parameter page table handle routine****************/
 void dump_addrlut(struct add_lookup_tbl *lut)
 {
@@ -460,6 +462,9 @@ int apc_init(apc_para_tbl_t *apc_tbl, struct phy_info *phy_info,
 
 	cps = phy_info->line_bitr / phy_info->max_bitr;
 	slot = (phy_info->line_bitr / (cps * phy_info->min_bitr)) + 1;
+
+	fua_debug("cps %d line_bitr %d max_bitr %d min_bitr %d slot %d sched_mode %d\n",
+			cps, phy_info->line_bitr, phy_info->max_bitr, phy_info->min_bitr, slot, phy_info->scheduler_mode);
 
 	/* priority table base */
 	offset = qe_muram_alloc(sizeof(apc_prio_tbl_t) * phy_info->prio_level,
@@ -1467,6 +1472,7 @@ void atm_transmit(struct fua_vcc *fua_vcc, u8 act, u8 pri, u16 bt)
 	if ((act == ACT_VBR) || (act == ACT_HF))
 		out_be16(&gbl->com_info_bt, bt);
 
+	dump_tct(fua_vcc->tct, fua_vcc->aal);
 	qe_issue_cmd(QE_ATM_TRANSMIT, f_p->subblock,
 			QE_CR_PROTOCOL_ATM_POS, 0);
 	return;
@@ -1548,6 +1554,8 @@ int open_tx(struct atm_vcc *vcc)
 	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
 			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
 
+	fua_debug("tx_qos->traffic_class = %d\n", tx_qos->traffic_class);
+
 	if ((tx_qos->traffic_class == ATM_CBR)
 		|| (tx_qos->traffic_class == ATM_UBR)
 		|| (tx_qos->traffic_class == ATM_ANYCLASS)) {
@@ -1594,6 +1602,8 @@ int open_tx(struct atm_vcc *vcc)
 			break;
 		}
 	}
+	dump_tct(fua_vcc->tct, fua_vcc->aal);
+
 	if (i == fua_info->max_channel) {
 		free_bds(&f_p->bd_pool, fua_vcc->txbase,
 				fua_info->bd_per_channel);
@@ -1618,8 +1628,11 @@ int open_tx(struct atm_vcc *vcc)
 			fua_dev->cps, &pcr, &pcr_fraction);
 	if (!pcr && !pcr_fraction) {
 		pcr = 1;
-		pcr_fraction = 140;
+//		pcr_fraction = 140;
+		pcr_fraction = 40;
 	}
+	fua_warning("traffic_type %d, max_pcr %d, pcr %d, cps %d, Setting Tx PCR %d.%d\n",
+			 fua_vcc->traffic_type, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, pcr, pcr_fraction);
 	TCT_SET_PCR(tct, pcr);
 	TCT_SET_PCR_FRACTION(tct, pcr_fraction);
 	out_be16(&tct->apclc, 0);
@@ -1896,21 +1909,21 @@ enum tran_res do_tx(struct sk_buff *skb)
 	bd->length = skb->len;
 	bd->status = ((bd->status & AAL5_TXBD_ATTR_W) | AAL5_TXBD_ATTR_I);
 	if (!skb_shinfo(skb)->nr_frags && !skb_shinfo(skb)->frag_list) {
-		fua_debug("line %d\n", __LINE__);
+		fua_debug("line %d skb contains a single linear data buffer\n", __LINE__);
 		bd->status |= (AAL5_TXBD_ATTR_L | AAL5_TXBD_ATTR_R);
 		flush_dcache_range((size_t) bd,
 				(size_t) (bd + sizeof(struct qe_bd)));
 		if (fua_vcc->avcf)
 			atm_transmit(fua_vcc, 0, 0, 0);
 	} else {
-		fua_debug("line %d\n", __LINE__);
+		fua_debug("line %d skb contains multiple fragment buffers\n", __LINE__);
 		bd->status |= AAL5_TXBD_ATTR_R;
 		flush_dcache_range((size_t) bd,
 				(size_t) (bd + sizeof(struct qe_bd)));
 
-		fua_debug("line %d\n", __LINE__);
 		if (skb_shinfo(skb)->nr_frags) {
-			fua_debug("A sk_frag got\n");
+			fua_debug("line %d skb fragment nr %d\n", __LINE__, skb_shinfo(skb)->nr_frags);
+			//fua_debug("A sk_frag got\n");
 			for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 				bd = get_free_tx_bd(fua_vcc);
 				if (bd == NULL)
@@ -1936,12 +1949,12 @@ enum tran_res do_tx(struct sk_buff *skb)
 					atm_transmit(fua_vcc, 0, 0, 0);
 			}
 		}
-		fua_debug("line %d\n", __LINE__);
 		if (skb_shinfo(skb)->frag_list) {
 			/* This should be a bug ?? */
 			struct sk_buff *list = skb_shinfo(skb)->frag_list;
 
-			fua_debug("a listed frag_list\n");
+			fua_debug("line %d skb fragment list\n", __LINE__);
+			//fua_debug("a listed frag_list\n");
 			for (; list; list = list->next) {
 				if (do_tx(list) != TRAN_OK)
 					return TRAN_FAIL;
@@ -1949,10 +1962,11 @@ enum tran_res do_tx(struct sk_buff *skb)
 		}
 	}
 
-	fua_debug("line %d\n", __LINE__);
+	fua_debug("line %d complete\n", __LINE__);
 	return TRAN_OK;
 }
 
+/* Sets all buffer descriptors to empty, from bd to rxcur */
 void discard_rx_bd(struct fua_vcc *fua_vcc, struct qe_bd * bd)
 {
 	if (bd == fua_vcc->rxcur) {
@@ -1970,6 +1984,11 @@ void discard_rx_bd(struct fua_vcc *fua_vcc, struct qe_bd * bd)
 	}
 }
 
+static inline int bd_index(struct fua_vcc *fua_vcc, struct qe_bd *bd)
+{
+	return ( ((uint32_t)bd) - ((uint32_t)fua_vcc->rxbase) )/sizeof(*bd);
+}
+
 /* bd is the last bd of the frame */
 static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd * bd)
 {
@@ -1982,6 +2001,11 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	struct qe_bd *bd_tmp;
 	struct sk_buff *skb;
 	struct qe_bd *bd_prev;
+	int count = 0;
+	int got_first = 0;
+	int got_last = 0;
+	uint16_t got_first_status = 0;
+	uint16_t got_last_status = 0;
 
 	vcc = fua_priv->rx_vcc[channel_code];
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
@@ -1999,18 +2023,26 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 		return;
 	}
 	if (!bd_tmp) {
-//		fua_warning("Invalid Buffer Descriptor. bd: 0x%08x\n", bd_tmp);
-//		discard_rx_bd(fua_vcc, bd);
-//		atomic_inc(&vcc->stats->rx_drop);
-//		return;
+		fua_warning("Invalid Buffer Descriptor. bd: 0x%08x\n", bd_tmp);
+		fua_err("buffer descriptor is NULL. bd: 0x%08x bd_prev: 0x%08x cur: 0x%08x base: 0x%08x count=%d size=%d\n",
+				 bd, bd_prev, fua_vcc->rxcur, fua_vcc->rxbase, count, sizeof(*bd));
+		discard_rx_bd(fua_vcc, bd);
+		atomic_inc(&vcc->stats->rx_drop);
+		return;
 	}
+	// Record if we see the first and last buffer descriptors for this frame
+	got_first = bd_index(fua_vcc, bd_tmp);
+	got_first_status = bd_tmp->status;
+	got_last = bd_index(fua_vcc, bd);
+	got_last_status = bd->status;
+
 	ATM_SKB(skb)->vcc = vcc;
 	ptr = skb_put(skb, frame_len);
 	sum_of_len = 0;
 	while (bd_tmp != bd) {
 		if (!bd_tmp) {
-			fua_err("buffer descriptor is NULL. bd: 0x%08x bd_prev: 0x%08x cur: 0x%08x base: 0x%08x\n",
-				 bd, bd_prev, fua_vcc->rxcur, fua_vcc->rxbase);
+			fua_err("buffer descriptor is NULL. bd: 0x%08x bd_prev: 0x%08x cur: 0x%08x base: 0x%08x count=%d size=%d\n",
+				 bd, bd_prev, fua_vcc->rxcur, fua_vcc->rxbase, count, sizeof(*bd));
 			dump_bd_pool(&fua_priv->bd_pool, 0);
 			dump_bd(bd, 0);
 			dump_bd(bd_prev, 0);
@@ -2035,9 +2067,16 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 		bd_prev = bd_tmp;
 		bd_tmp =
 			bd_get_next(bd_tmp, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
+//		mdelay(10);
+		count++;
 	}
 	if (sum_of_len < frame_len)
 		memcpy(ptr, phys_to_virt(bd_tmp->buf), frame_len - sum_of_len);
+	if (frame_len < 6144) {
+		fua_warning("%d bd of length %d copied into skb. f[%d]=0x%04x l[%d]=0x%04x bd[%d] s=0x%04x\n",
+			 count + 1, frame_len, got_first, got_first_status, got_last, got_last_status, bd_index(fua_vcc, bd_tmp), bd_tmp->status);
+//		dump_bd(bd_tmp, 1);
+	}
 	bd_tmp->length = 0;
 	bd_tmp->status = (AAL5_RXBD_ATTR_E
 				| AAL5_RXBD_ATTR_I
@@ -2096,7 +2135,7 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 	}
 	if (intr_attr & INT_QUE_ENT_ATTR_RXB) {
 		int i = 0;
-		fua_debug("channel %d revieves a rx buffer\n",
+		fua_debug("channel %d receives a rx buffer\n",
 				entry->channel_code);
 		vcc = fua_priv->rx_vcc[entry->channel_code];
 		fua_vcc = (struct fua_vcc *)(vcc->dev_data);
@@ -2106,24 +2145,27 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 			i++;
 			if (bd->status & AAL5_RXBD_ATTR_F) {
 				if (fua_vcc->first != NULL) {
-					fua_debug("\tmisordered first bd\n");
+					fua_warning("\tmisordered first bd i=%d\n", i);
+					//fua_debug("\tmisordered first bd\n");
 					discard_rx_bd(fua_vcc,fua_vcc->first);
 				}
 				fua_vcc->first = bd;
 			}
 			/* This should be done before the last bd be handled */
-			fua_vcc->rxcur =
-				bd_get_next(bd, fua_vcc->rxbase,
-							AAL5_RXBD_ATTR_W);
+			fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 			if (bd->status & AAL5_RXBD_ATTR_L) {
-				if (!fua_vcc->first)
-					discard_rx_bd(fua_vcc, fua_vcc->rxcur);
-				do_rx(fua_priv, entry->channel_code, bd);
+				if (!fua_vcc->first) {
+					fua_warning("last bd[%d] found without a first bd i=%d\n", bd_index(fua_vcc, bd), i);
+					discard_rx_bd(fua_vcc, fua_vcc->rxcur);	// first bd not set yet, so discard this partial frame
+				}
+				else {
+					do_rx(fua_priv, entry->channel_code, bd);  // process from first to this bd
+				}
 			}
 		}
 	}
 	if (intr_attr & INT_QUE_ENT_ATTR_RXF) {
-		fua_debug("channel %d recevie a whole aal5 frame\n",
+		fua_debug("channel %d receive a whole aal5 frame\n",
 				entry->channel_code);
 		vcc = fua_priv->rx_vcc[entry->channel_code];
 		fua_vcc = (struct fua_vcc *)(vcc->dev_data);
@@ -2134,19 +2176,17 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		if (bd->status & AAL5_RXBD_ATTR_F) {
 			fua_debug("received the first bd at 0x%p\n", bd);
 			if (fua_vcc->first != NULL) {
-				fua_debug("\tmisordered first bd\n");
-				discard_rx_bd(fua_vcc,
-					fua_vcc->first);
+				fua_warning("\tmisordered first bd\n");
+				//fua_debug("\tmisordered first bd\n");
+				discard_rx_bd(fua_vcc, fua_vcc->first);
 			}
 			fua_vcc->first = bd;
 		}
 
 		if (!fua_vcc->first) {
-			fua_debug("miss the first bd in "
-					"the frame for %d channel\n",
-						entry->channel_code);
-			fua_vcc->rxcur =
-			bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
+			fua_warning("miss the first bd in " "the frame for %d channel\n", entry->channel_code);
+			//fua_debug("miss the first bd in " "the frame for %d channel\n", entry->channel_code);
+			fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 			/* discard all bds include until rxcur. */
 			discard_rx_bd(fua_vcc, fua_vcc->rxcur);
 			return;
@@ -2157,13 +2197,11 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 			/* receive a abort message */
 			fua_debug("\tabort frame for %d channel\n",
 					 entry->channel_code);
-			fua_vcc->rxcur =
-			bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
+			fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 			discard_rx_bd(fua_vcc, fua_vcc->first);
 			return;
 		}
-		fua_vcc->rxcur =
-		bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
+		fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 		do_rx(fua_priv, entry->channel_code, bd);
 	}
 }
@@ -2556,18 +2594,21 @@ static int fua_ioctl(struct atm_dev *dev, unsigned int cmd,
 static int fua_getsockopt(struct atm_vcc *vcc, int level, int optname,
 				void *optval, int optlen)
 {
+	fua_err("%s(): Failed - Not Implemented\n", __func__);
 	return -EINVAL;
 }
 
 static int fua_setsockopt(struct atm_vcc *vcc, int level, int optname,
 				void *optval, unsigned int optlen)
 {
+	fua_err("%s(): Failed - Not Implemented\n", __func__);
 	return -EINVAL;
 }
 
 static int fua_change_qos(struct atm_vcc *vcc, struct atm_qos *qos,
 				int flags)
 {
+	fua_err("%s(): Failed - Not Implemented\n", __func__);
 	return -1;
 }
 

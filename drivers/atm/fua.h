@@ -26,16 +26,16 @@
 #include <asm/atomic.h>
 #include <linux/interrupt.h>
 
-#define	FUA_DEBUG
+//#define	FUA_DEBUG
 
 #ifdef FUA_DEBUG
-#define fua_debug(format, args...) \
-	printk(KERN_DEBUG"fua: %s() "format,__FUNCTION__,##args)
-#define	fua_dump(format,args...) \
-	printk(format,##args)
+	#define fua_debug(format, args...) \
+		printk(KERN_DEBUG"fua: %s() "format,__FUNCTION__,##args)
+	#define	fua_dump(format,args...) \
+		printk(format,##args)
 #else
-#define fua_debug(format, args...)
-#define fua_dump(format, args...)
+	#define fua_debug(format, args...)
+	#define fua_dump(format, args...)
 #endif
 
 #define fua_err(format,args...) \
@@ -207,6 +207,7 @@ typedef	struct	sub_pg0_conf_tbl {
 #define GMODE_UEAD	0x0010
 #define GMODE_CUAB	0x0008
 #define GMODE_EVPT	0x0004
+#define GMODE_ALM_2	0x0002
 #define GMODE_ALM_ADD_COMP	0x0001
 
 #define UCC_MODE_MULTI_THREAD_EN	0x8000
@@ -464,11 +465,11 @@ typedef struct	aal5_bd {
 	u16	data_length;
 	u32	dbptr;
 } __attribute__((packed)) aal5_bd_t;
-#define AAL5_RXBD_ATTR_E	0x8000
-#define AAL5_RXBD_ATTR_W	0x2000
-#define AAL5_RXBD_ATTR_I	0x1000
-#define AAL5_RXBD_ATTR_L	0x0800
-#define AAL5_RXBD_ATTR_F	0x0400
+#define AAL5_RXBD_ATTR_E	0x8000		/* Empty bd not in use */
+#define AAL5_RXBD_ATTR_W	0x2000		/* Wrap (last bd in chain) */
+#define AAL5_RXBD_ATTR_I	0x1000		/* Interrupt when used */
+#define AAL5_RXBD_ATTR_L	0x0800		/* Last bd in a frame */
+#define AAL5_RXBD_ATTR_F	0x0400		/* First bd in a frame */
 #define AAL5_RXBD_ATTR_CM	0x0200
 #define AAL5_RXBD_ATTR_PNC	0x0080
 #define AAL5_RXBD_ATTR_CLP	0x0020
