@@ -163,6 +163,17 @@
 			interrupts = <14 0x8>;
 			interrupt-parent = <&ipic>;
 			dfsrr;
+
+			temp-sensor0@4f {
+				compatible = "dallas,ds1621";
+				reg = <0x4f>;
+			};
+
+			temp-sensor1@4c {
+				compatible = "ti,tmp411", "ti,tmp401";
+				reg = <0x4c>;
+			};
+
 		};
 
 		i2c@3100 {
@@ -351,6 +362,28 @@
 					2  5  1  0  2  0>;/* Rx clock BRGO5 (from CLK13) */
 				};
 
+//			pio4: led_gpio@01 {
+//				pio-map = <
+//				/* port  pin  dir  open_drain  assignment  has_irq */
+//				/* Tx clock and Rx clock */
+//					1  4  1  0  0  0  /* LED D1 */
+//					1  5  1  0  0  0>;/* LED D2 */
+//				};
+
+		};
+
+		leds {
+			compatible = "gpio-leds";
+
+			d1 {
+				gpios = <&qe_pio_b 4 1>;
+				linux,default-trigger = "timer";
+			};
+
+			d2 {
+				gpios = <&qe_pio_b 5 1>;
+				default-state = "off";
+			};
 		};
 	};
 
