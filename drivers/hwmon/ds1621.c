@@ -263,6 +263,7 @@ static int ds1621_probe(struct i2c_client *client,
 		goto exit_remove_files;
 	}
 
+	dev_info(&client->dev, "Detected Dallas ds1621 chip\n");
 	return 0;
 
       exit_remove_files:
