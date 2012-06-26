@@ -27,14 +27,18 @@
 #include <linux/interrupt.h>
 
 //#define	FUA_DEBUG
-
 #ifdef FUA_DEBUG
 	#define fua_debug(format, args...) \
 		printk(KERN_DEBUG"fua: %s() "format,__FUNCTION__,##args)
+#else
+	#define fua_debug(format, args...)
+#endif
+
+//#define   FUA_DUMP
+#ifdef FUA_DUMP
 	#define	fua_dump(format,args...) \
 		printk(format,##args)
 #else
-	#define fua_debug(format, args...)
 	#define fua_dump(format, args...)
 #endif
 
@@ -211,6 +215,7 @@ typedef	struct	sub_pg0_conf_tbl {
 #define GMODE_ALM_ADD_COMP	0x0001
 
 #define UCC_MODE_MULTI_THREAD_EN	0x8000
+#define UCC_MODE_IDLE_MOD_EN	0x4000
 #define UCC_MODE_TSR_SEL	0x2000
 #define UCC_MODE_DYN_AC_EN	0x0400
 #define UCC_MODE_UID		0x0300
@@ -617,6 +622,7 @@ struct fua_device {
 	struct atm_dev *dev; /* point back */
 	struct phy_info *phy_info;
 	u8 cps;
+	int slot_count;
 	struct list_head vcc_list;
 	struct list_head list;   /* linked into fua_priv structure */
 	atomic_t refcnt;

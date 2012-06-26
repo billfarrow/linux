@@ -340,9 +340,10 @@ static int addr_comp_lookup_remove(add_lookup_tbl_t *addr_tbl, int uid,
 void dump_apc(apc_para_tbl_t * apc_phy)
 {
 	apc_prio_tbl_t *prio, *prio_last;
-	apc_slot *slot, *slot_end;
+	apc_slot *slot, *slot_end, *tmp;
 	int i, j;
 	u16 offset;
+	apc_slot slotcpy[16];
 
 	fua_dump("apc at %p\n", apc_phy);
 	fua_dump("\tapcl_first: 0x%x at %p\n",
@@ -394,9 +395,13 @@ void dump_apc(apc_para_tbl_t * apc_phy)
 		slot = (apc_slot *)qe_muram_addr(offset);
 		offset = in_be16(&prio->apc_levi_end);
 		slot_end = (apc_slot *)qe_muram_addr(offset);
+
+		tmp = slot;
+		while (tmp <= slot_end)
+			slotcpy[j++] = *(tmp++);
+		j = 0;
 		while (slot <= slot_end) {
-			fua_dump("\t\tslot %d: 0x%x at %p\n",
-					j, *slot, slot);
+			fua_dump("\t\tslot %d: 0x%x at %p\n", j, slotcpy[j], slot);
 			slot++;
 			j++;
 		}
@@ -404,6 +409,7 @@ void dump_apc(apc_para_tbl_t * apc_phy)
 		prio++;
 		i++;
 	}
+	fua_dump("apc end\n");
 }
 #endif
 
@@ -445,7 +451,7 @@ void apc_prio_exit(apc_prio_tbl_t * prio)
 void apc_exit(apc_para_tbl_t *apc_tbl_base, struct phy_info *phy_info);
 
 int apc_init(apc_para_tbl_t *apc_tbl, struct phy_info *phy_info,
-		u8 *cell_per_slot, int type)
+		u8 *cell_per_slot, int *slot_count, int type)
 {
 	int i;
 	u8 cps;
@@ -463,7 +469,7 @@ int apc_init(apc_para_tbl_t *apc_tbl, struct phy_info *phy_info,
 	cps = phy_info->line_bitr / phy_info->max_bitr;
 	slot = (phy_info->line_bitr / (cps * phy_info->min_bitr)) + 1;
 
-	fua_debug("cps %d line_bitr %d max_bitr %d min_bitr %d slot %d sched_mode %d\n",
+	fua_warning("cps %d line_bitr %d max_bitr %d min_bitr %d slot %d sched_mode %d\n",
 			cps, phy_info->line_bitr, phy_info->max_bitr, phy_info->min_bitr, slot, phy_info->scheduler_mode);
 
 	/* priority table base */
@@ -493,6 +499,7 @@ int apc_init(apc_para_tbl_t *apc_tbl, struct phy_info *phy_info,
 	}
 
 	*cell_per_slot = cps;
+	*slot_count = slot;
 	return 0;
 out:
 	phy_info->prio_level = i;
@@ -1059,14 +1066,23 @@ int thread_para_init(thread_para_ram_pg_t * thread_para)
 
 	/* init thread local parameter ram page */
 	offset = qe_muram_alloc(sizeof(thread_local_pg_para_tbl_t), 0x8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&thread_para->local_pg_para_ptr, offset);
 	out_be16(&thread_para->subpg0_conf_tbl_ptr, 0x0);
 	offset = qe_muram_alloc(0x40, 0x8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&thread_para->subpg0_rx_tmp_tbl_ptr, offset);
 	out_be16(&thread_para->subpg0_tx_tmp_tbl_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0, 0x40);
 	out_be16(&thread_para->subpg1_conf_tbl_ptr, 0x0);
 	offset = qe_muram_alloc(0x40, 0x8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&thread_para->subpg1_rx_tmp_tbl_ptr, offset);
 	out_be16(&thread_para->subpg1_tx_tmp_tbl_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0, 0x40);
@@ -1076,13 +1092,22 @@ int thread_para_init(thread_para_ram_pg_t * thread_para)
 	_memset_io((void *)thread_local, 0x0,
 		sizeof(thread_local_pg_para_tbl_t));
 	offset = qe_muram_alloc(0x20, 0x20);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&thread_local->int_rct_tmp_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0,0x20);
 	/* For aal2 and CES */
 	offset = qe_muram_alloc(0x20, 0x20);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&thread_local->rxqd_tmp , offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0, 0x20);
 	offset = qe_muram_alloc(0x40, 0x40);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&thread_local->pprs_int_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0, 0x40);
 	return 0;
@@ -1116,6 +1141,9 @@ int comm_mth_thread_init(comm_mth_para_tbl_t *comm_mth, int required_threads)
 		return -EINVAL;
 
 	offset = qe_muram_alloc(required_threads * sizeof(thread_entry_t), 4);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&comm_mth->atm_threads_tbl_base, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0,
 			 required_threads * sizeof(thread_entry_t));
@@ -1129,6 +1157,9 @@ int comm_mth_thread_init(comm_mth_para_tbl_t *comm_mth, int required_threads)
 		out_8(&thread_entry->snum, snum);
 		offset = qe_muram_alloc(sizeof(thread_para_ram_pg_t),
 				DISTRIBUTOR_THREAD_ALIGNMENT);
+		if (IS_ERR_VALUE(offset)) {
+			return -ENOMEM;
+		}
 		out_be16(&thread_entry->page, offset);
 		_memset_io((void *)qe_muram_addr(offset),
 				0x0, sizeof(thread_para_ram_pg_t));
@@ -1138,6 +1169,9 @@ int comm_mth_thread_init(comm_mth_para_tbl_t *comm_mth, int required_threads)
 	}
 
 	offset = qe_muram_alloc(required_threads * sizeof(thread_entry_t), 4);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&comm_mth->atm_thread_cam_base, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0,
 			required_threads * sizeof(thread_entry_t));
@@ -1198,6 +1232,9 @@ int subpg0_init(void *ucc_para_pg,
 	}
 
 	offset = qe_muram_alloc(0x30, 0x20);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&subpg0->gbl_atm_para_tbl_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0, 0x30);
 	/* pointer to channel 0 for raw cell queue */
@@ -1206,6 +1243,9 @@ int subpg0_init(void *ucc_para_pg,
 	out_be32(&subpg0->cam_mask, 0);
 	out_be16(&subpg0->gmode, 0);
 	offset = qe_muram_alloc(0x20, 0x20);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&subpg0->int_tcte_tmp_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0, 0x20);
 	out_be16(&subpg0->add_comp_lookup_base, add_comp_lookup_base);
@@ -1236,6 +1276,9 @@ int subpg0_init(void *ucc_para_pg,
 		subpg0->tx_term_snum = snum;
 
 		offset = qe_muram_alloc(sizeof(comm_mth_para_tbl_t), 0x10);
+		if (IS_ERR_VALUE(offset)) {
+			return -ENOMEM;
+		}
 		out_be16(&subpg0->com_mth_para_tbl_base, offset);
 		_memset_io((void *)qe_muram_addr(offset),
 				0x0, sizeof(comm_mth_para_tbl_t));
@@ -1244,9 +1287,15 @@ int subpg0_init(void *ucc_para_pg,
 					required_threads);
 
 		offset = qe_muram_alloc(0x42, 0x80);
+		if (IS_ERR_VALUE(offset)) {
+			return -ENOMEM;
+		}
 		out_be16(&subpg0->mth_term_rx_stat_ptr, offset);
 		_memset_io((void *)qe_muram_addr(offset), 0x0, 0x42);
 		offset = qe_muram_alloc(0x42, 0x80);
+		if (IS_ERR_VALUE(offset)) {
+			return -ENOMEM;
+		}
 		out_be16(&subpg0->mth_term_tx_stat_ptr, offset);
 		_memset_io((void *)qe_muram_addr(offset), 0x0, 0x42);
 
@@ -1313,22 +1362,37 @@ int distributor_para_pg_init(distributor_para_ram_pg_t *dist_para)
 	distributor_local_pg_para_tbl_t *dist_local;
 
 	offset = qe_muram_alloc(sizeof(distributor_local_pg_para_tbl_t), 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&dist_para->distributor_local_pg_para_ptr, offset);
 	dist_local = (distributor_local_pg_para_tbl_t *)qe_muram_addr(offset);
 	_memset_io((void *)dist_local, 0x0,
 			sizeof(distributor_local_pg_para_tbl_t));
 
 	offset = qe_muram_alloc(0x20, 0x20);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&dist_local->rx_tmp, offset);
 
 	offset = qe_muram_alloc(sizeof(sub_pg0_conf_tbl_t), 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&dist_para->subpg0_conf_tbl_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0,
 			sizeof(sub_pg0_conf_tbl_t));
 	offset = qe_muram_alloc(0x40, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&dist_para->subpg0_rx_tmp_tbl_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0, 0x40);
 	offset = qe_muram_alloc(0x40, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&dist_para->subpg0_tx_tmp_tbl_ptr, offset);
 	_memset_io((void *)qe_muram_addr(offset), 0x0, 0x40);
 	return 0;
@@ -1356,26 +1420,53 @@ int ucc_para_pg_init(ucc_para_atm_pg_t *ucc_para)
 
 	_memset_io((void *)ucc_para, 0x0, sizeof(ucc_para_atm_pg_t));
 	offset = qe_muram_alloc(0x10, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&ucc_para->local_pg_para_ptr, offset);
 	offset = qe_muram_alloc(0x60, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&ucc_para->subpg0_conf_tbl_ptr, offset);
 	offset = qe_muram_alloc(0x40, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&ucc_para->subpg0_rx_tmp_tbl_ptr, offset);
 	offset = qe_muram_alloc(0x40, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&ucc_para->subpg0_tx_tmp_tbl_ptr, offset);
 	offset = qe_muram_alloc(0x40, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&ucc_para->subpg1_conf_tbl_ptr, offset);
 	offset = qe_muram_alloc(0x40, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&ucc_para->subpg1_rx_tmp_tbl_ptr, offset);
 	offset = qe_muram_alloc(0x40, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&ucc_para->subpg1_tx_tmp_tbl_ptr, offset);
 
 	/* local page parameter initialization */
 	local = (local_pg_para_tbl_t *)
 		qe_muram_addr(in_be16(&ucc_para->local_pg_para_ptr));
 	offset = qe_muram_alloc(0x40, 0x20);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&local->int_rct_tmp_ptr, offset);
 	offset = qe_muram_alloc(0x20, 8);
+	if (IS_ERR_VALUE(offset)) {
+		return -ENOMEM;
+	}
 	out_be16(&local->rx_tmp, offset);
 
 	return 0;
@@ -1459,6 +1550,10 @@ void atm_transmit(struct fua_vcc *fua_vcc, u8 act, u8 pri, u16 bt)
 	fua_vcc->tct->attr |= TCT_ENTRY_ATTR_VCON;
 	fua_dev = (struct fua_device *)(fua_vcc->vcc->dev->dev_data);
 	f_p = fua_dev->fua_priv;
+
+	fua_warning("APC state before transmit\n");
+	dump_apc(&f_p->apc_tbl_base[fua_dev->phy_info->phy_id]);
+
 	offset = in_be16(&f_p->ucc_para_pg->subpg0_conf_tbl_ptr);
 	subpg0 = (sub_pg0_conf_tbl_t *)qe_muram_addr(offset);
 	offset = in_be16(&subpg0->gbl_atm_para_tbl_ptr);
@@ -1472,9 +1567,15 @@ void atm_transmit(struct fua_vcc *fua_vcc, u8 act, u8 pri, u16 bt)
 	if ((act == ACT_VBR) || (act == ACT_HF))
 		out_be16(&gbl->com_info_bt, bt);
 
+	fua_warning("TCT state before transmit\n");
 	dump_tct(fua_vcc->tct, fua_vcc->aal);
 	qe_issue_cmd(QE_ATM_TRANSMIT, f_p->subblock,
 			QE_CR_PROTOCOL_ATM_POS, 0);
+
+	fua_warning("APC state after transmit\n");
+	dump_apc(&f_p->apc_tbl_base[fua_dev->phy_info->phy_id]);
+
+	fua_warning("atm_transmit complete\n");
 	return;
 }
 
@@ -1544,6 +1645,7 @@ int open_tx(struct atm_vcc *vcc)
 	u16 pcr;
 	u8 pcr_fraction;
 	int i;
+	const char *class_name[] = {"NONE", "UBR", "CBR", "VBR", "ABR", "ANYCLASS"};
 
 	dev = vcc->dev;
 	fua_dev = (struct fua_device *)(dev->dev_data);
@@ -1551,6 +1653,8 @@ int open_tx(struct atm_vcc *vcc)
 	fua_info = f_p->fua_info;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 	tx_qos = &vcc->qos.txtp;
+	fua_warning("Open Channel %d.%d class %s max %d pcr %d min %d\n", vcc->vpi, vcc->vci,
+			class_name[vcc->qos.txtp.traffic_class], vcc->qos.txtp.max_pcr, vcc->qos.txtp.pcr, vcc->qos.txtp.min_pcr);
 	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
 			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
 
@@ -1628,11 +1732,16 @@ int open_tx(struct atm_vcc *vcc)
 			fua_dev->cps, &pcr, &pcr_fraction);
 	if (!pcr && !pcr_fraction) {
 		pcr = 1;
-//		pcr_fraction = 140;
-		pcr_fraction = 40;
+		pcr_fraction = 140;
 	}
-	fua_warning("traffic_type %d, max_pcr %d, pcr %d, cps %d, Setting Tx PCR %d.%d\n",
-			 fua_vcc->traffic_type, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, pcr, pcr_fraction);
+	if (pcr > fua_dev->slot_count)
+	{
+		fua_warning("Forcing bitrate to configured minimum\n");
+		pcr = fua_dev->slot_count -1;
+		pcr_fraction = 0;
+	}
+	fua_warning("traffic_type %d, max_pcr %d, pcr %d, cps %d, slots %d, Setting Tx PCR %d.%d\n",
+			 fua_vcc->traffic_type, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction);
 	TCT_SET_PCR(tct, pcr);
 	TCT_SET_PCR_FRACTION(tct, pcr_fraction);
 	out_be16(&tct->apclc, 0);
@@ -1649,11 +1758,13 @@ int open_tx(struct atm_vcc *vcc)
 
 	fua_vcc->vcc = vcc;
 
+	/* Lets have a look at how the UCC is set up */
+	dump_ucc_para(f_p);
+
 	/* start this channel. Put this channel into APC scheduling table */
 	if (!fua_vcc->avcf) {
 		atm_transmit(fua_vcc, 0, 0, 0);
 	}
-
 	return 0;
 }
 
@@ -1885,9 +1996,12 @@ enum tran_res do_tx(struct sk_buff *skb)
 	struct fua_vcc *fua_vcc;
 	struct device *dev;
 
+	struct fua_device *fua_dev;
+
 	vcc = ATM_SKB(skb)->vcc;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 	dev = &(vcc->dev->class_dev);
+	fua_dev = (struct fua_device *)vcc->dev->dev_data;
 	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
 			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
 
@@ -1913,6 +2027,11 @@ enum tran_res do_tx(struct sk_buff *skb)
 		bd->status |= (AAL5_TXBD_ATTR_L | AAL5_TXBD_ATTR_R);
 		flush_dcache_range((size_t) bd,
 				(size_t) (bd + sizeof(struct qe_bd)));
+
+		fua_dump("TCT state after BD len=%d ready\n", skb->len);
+		dump_tct(fua_vcc->tct, fua_vcc->aal);
+		dump_apc(&fua_dev->fua_priv->apc_tbl_base[fua_dev->phy_info->phy_id]);
+
 		if (fua_vcc->avcf)
 			atm_transmit(fua_vcc, 0, 0, 0);
 	} else {
@@ -2017,7 +2136,7 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	frame_len = bd->length;
 	skb = atm_alloc_charge(vcc, frame_len, GFP_ATOMIC);
 	if (!skb) {
-		fua_warning("Alloc sk_buff failed\n");
+		fua_warning("Alloc sk_buff lenth %d failed\n", frame_len);
 		discard_rx_bd(fua_vcc, bd);
 		atomic_inc(&vcc->stats->rx_drop);
 		return;
@@ -2067,16 +2186,15 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 		bd_prev = bd_tmp;
 		bd_tmp =
 			bd_get_next(bd_tmp, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
-//		mdelay(10);
 		count++;
 	}
 	if (sum_of_len < frame_len)
 		memcpy(ptr, phys_to_virt(bd_tmp->buf), frame_len - sum_of_len);
-	if (frame_len < 6144) {
-		fua_warning("%d bd of length %d copied into skb. f[%d]=0x%04x l[%d]=0x%04x bd[%d] s=0x%04x\n",
-			 count + 1, frame_len, got_first, got_first_status, got_last, got_last_status, bd_index(fua_vcc, bd_tmp), bd_tmp->status);
+//	if (frame_len < 6144) {
+//		fua_debug("%d bd of length %d copied into skb. f[%d]=0x%04x l[%d]=0x%04x bd[%d] s=0x%04x\n",
+//			 count + 1, frame_len, got_first, got_first_status, got_last, got_last_status, bd_index(fua_vcc, bd_tmp), bd_tmp->status);
 //		dump_bd(bd_tmp, 1);
-	}
+//	}
 	bd_tmp->length = 0;
 	bd_tmp->status = (AAL5_RXBD_ATTR_E
 				| AAL5_RXBD_ATTR_I
@@ -2123,14 +2241,20 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		fua_debug("channel %d transmits a tx buffer\n",
 				entry->channel_code);
 		vcc = fua_priv->tx_vcc[entry->channel_code];
-		fua_vcc = (struct fua_vcc *)(vcc->dev_data);
+		if (!vcc) {
+			fua_warning("channel %d transmits a tx buffer after channel has closed\n", entry->channel_code);
+			dev_kfree_skb_any(skb);
+		}
+		else {
+			fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 
-		skb = skb_dequeue(&fua_vcc->pop_list);
-		if (skb) {
-			if (vcc->pop)
-				vcc->pop(vcc, skb);
-			else
-				dev_kfree_skb_any(skb);
+			skb = skb_dequeue(&fua_vcc->pop_list);
+			if (skb) {
+				if (vcc->pop)
+					vcc->pop(vcc, skb);
+				else
+					dev_kfree_skb_any(skb);
+			}
 		}
 	}
 	if (intr_attr & INT_QUE_ENT_ATTR_RXB) {
@@ -2882,11 +3006,12 @@ static int fua_priv_init(struct device * dev, struct fua_private * f_p)
 		fua_dev = list_entry(p, struct fua_device, list);
 		phy_info = fua_dev->phy_info;
 		err = apc_init(&f_p->apc_tbl_base[phy_info->phy_id], phy_info,
-				&fua_dev->cps, ATM_CBR);
+				&fua_dev->cps, &fua_dev->slot_count, ATM_CBR);
 		if (err) {
 			atm_dev_deregister(fua_dev->dev);
 			j++;
 		}
+//		dump_apc(&f_p->apc_tbl_base[phy_info->phy_id]);
 	}
 	if (i == j)
 		goto out;
@@ -2912,6 +3037,7 @@ static int fua_priv_init(struct device * dev, struct fua_private * f_p)
 
 	bd_base_ext = virt_to_phys((void *)(f_p->bd_pool.head)) >> 24;
 	ucc_mode = gmode = 0;
+//	ucc_mode = UCC_MODE_IDLE_MOD_EN;
 	gmode = (GMODE_GBL | GMODE_ALM_ADD_COMP);
 	if (f_p->fua_info->uf_info.ucc_num % 2)
 		ucc_mode |= 1 << ffz(UCC_MODE_UID);

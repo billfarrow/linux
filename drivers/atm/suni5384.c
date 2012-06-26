@@ -363,7 +363,6 @@ static int suni_stop(struct atm_dev *dev)
 	if (!sunis)
 		del_timer_sync(&poll_timer);
 	spin_unlock_irqrestore(&sunis_lock,flags);
-	kfree(PRIV(dev));
 
 	return 0;
 }
@@ -377,7 +376,6 @@ static const struct atmphy_ops suni_ops = {
 static int pm5384_init(struct atm_dev *dev, int phy_id, int port_width)
 {
 	unsigned char mri;
-	int i;
 
 	/* Make sure id correct */
 	mri = GET(MRI);

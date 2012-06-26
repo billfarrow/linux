@@ -221,12 +221,14 @@ int upc_slot_rate_conf(int slot_num, struct upc_slot_rate_info *rate,
 	reg = (&upc_regs->uprp1 + slot_num);
 	value = rate->pre << 8 | rate->tirec;
 	out_be16(reg, value);
+	printk(KERN_WARNING "UPC tirec=%d pre=%d\n", rate->tirec, rate->pre);
 
 	for (i = 0; i < 4; i++) {
 		if (rate->sub_en[i]) {
 			value = (rate->tirr[i] & UPTIRR_TIRR) | UPTIRR_EN;
 			reg = (&upc_regs->uptirr1_0 + (slot_num * 4) + i);
 			out_be16(reg, value);
+			printk(KERN_WARNING "UPC slot_num=%d uptirr=%d\n", slot_num, value);
 		}
 	}
 
@@ -578,12 +580,25 @@ int upc_init(void)
 			upc_slot->heci = 0;
 			upc_slot->hecc = 0;	// disable checking of the HEC Header CRC byte
 			upc_slot->cos = 0;
-			upc_slot->rate.pre = 0;
-			upc_slot->rate.tirec = 0;
+			upc_slot->rate.pre = 0;		// prescaler for UPC Internal Rate counters. 0=div by 1
+#ifdef EXTERNAL_RATE
+			upc_slot->rate.tirec = 0;	// Transmit Internal/External Rate Expiration. 0=extern. 1=internal no underrun interrupts
 			for (j = 0; j < 4; j++) {
 				upc_slot->rate.sub_en[j] = 0;
 				upc_slot->rate.tirr[j] = 0;
 			}
+#else
+			/* CYC=(bits per cell) / (required bitrate Mbps) / (Serial Clock in usec (50MHz))
+			 * CYC=(8* 53 / 155) / (1/50) = 136.774
+			*/
+			upc_slot->rate.tirec = 1;	// Transmit Internal/External Rate Expiration. 0=extern. 1=internal no underrun interrupts
+			upc_slot->rate.sub_en[0] = 1;
+			upc_slot->rate.tirr[0] = 135;	// CYC - 1
+			for (j = 1; j < 4; j++) {
+				upc_slot->rate.sub_en[j] = 0;
+				upc_slot->rate.tirr[j] = 0;
+			}
+#endif
 
 			upc_info[i].us_info[upc_slot->upc_slot_num] = upc_slot;
 		}

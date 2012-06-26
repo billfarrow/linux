@@ -126,7 +126,8 @@
 
 			line_bitr = <155000000>;
 			max_bitr = <155000000>;
-			min_bitr = <50000000>;
+//			min_bitr = <50000000>;
+			min_bitr = <5000000>;
 			port-width = <1>;	// 0 = 8 bit Utopia, 1 = 16 bit Utopia
 		};
 
@@ -486,7 +487,7 @@
 			rx-clock-name = "brg5";
 			tx-clock-name = "brg6";
 			pio-handle = < &pio3 >;
-			multithread;
+//			multithread;
 			threads = <16>;
 			local-mac-address = [ 00 00 0B 50 61 DB ];
 		};
