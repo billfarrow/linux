@@ -767,6 +767,7 @@ struct qe_bd *alloc_bds(bd_pool_t *bd_pool, int number)
 		fua_warning("Do not enough bds in bd_pool;"
 			"number:0x%x frees:0x%x request:0x%x\n",
 			bd_pool->number, bd_pool->frees, number);
+		dump_bd_pool(bd_pool, 0);
 		return NULL;
 	}
 
@@ -1551,8 +1552,8 @@ void atm_transmit(struct fua_vcc *fua_vcc, u8 act, u8 pri, u16 bt)
 	fua_dev = (struct fua_device *)(fua_vcc->vcc->dev->dev_data);
 	f_p = fua_dev->fua_priv;
 
-	fua_warning("APC state before transmit\n");
-	dump_apc(&f_p->apc_tbl_base[fua_dev->phy_info->phy_id]);
+//	fua_debug("APC state before transmit\n");
+//	dump_apc(&f_p->apc_tbl_base[fua_dev->phy_info->phy_id]);
 
 	offset = in_be16(&f_p->ucc_para_pg->subpg0_conf_tbl_ptr);
 	subpg0 = (sub_pg0_conf_tbl_t *)qe_muram_addr(offset);
@@ -1567,13 +1568,13 @@ void atm_transmit(struct fua_vcc *fua_vcc, u8 act, u8 pri, u16 bt)
 	if ((act == ACT_VBR) || (act == ACT_HF))
 		out_be16(&gbl->com_info_bt, bt);
 
-	fua_warning("TCT state before transmit\n");
-	dump_tct(fua_vcc->tct, fua_vcc->aal);
+//	fua_debug("TCT state before transmit\n");
+//	dump_tct(fua_vcc->tct, fua_vcc->aal);
 	qe_issue_cmd(QE_ATM_TRANSMIT, f_p->subblock,
 			QE_CR_PROTOCOL_ATM_POS, 0);
 
-	fua_warning("APC state after transmit\n");
-	dump_apc(&f_p->apc_tbl_base[fua_dev->phy_info->phy_id]);
+//	fua_debug("APC state after transmit\n");
+//	dump_apc(&f_p->apc_tbl_base[fua_dev->phy_info->phy_id]);
 
 	fua_warning("atm_transmit complete\n");
 	return;
@@ -1646,6 +1647,8 @@ int open_tx(struct atm_vcc *vcc)
 	u8 pcr_fraction;
 	int i;
 	const char *class_name[] = {"NONE", "UBR", "CBR", "VBR", "ABR", "ANYCLASS"};
+	uint8_t priority;
+	uint8_t act;		// ATM Channel Type
 
 	dev = vcc->dev;
 	fua_dev = (struct fua_device *)(dev->dev_data);
@@ -1660,15 +1663,34 @@ int open_tx(struct atm_vcc *vcc)
 
 	fua_debug("tx_qos->traffic_class = %d\n", tx_qos->traffic_class);
 
-	if ((tx_qos->traffic_class == ATM_CBR)
-		|| (tx_qos->traffic_class == ATM_UBR)
-		|| (tx_qos->traffic_class == ATM_ANYCLASS)) {
-		fua_vcc->traffic_type = PCR;
-	}
-	else
+	switch (tx_qos->traffic_class)
 	{
-		fua_warning("tx_qos->traffic_class: 0x%x\n", tx_qos->traffic_class);
-		return -1;
+		case ATM_CBR:
+		{
+			fua_vcc->traffic_type = PCR;
+			priority = 0;
+			act = ACT_OTH;		// Peak Cell Rate pacing
+			break;
+		}
+		case ATM_VBR:
+		{
+			fua_vcc->traffic_type = PCR;
+			priority = 1;
+			act = ACT_VBR;		// Peak and Sustain Cell Rate pacing
+			break;
+		}
+		case ATM_UBR:
+		{
+			fua_vcc->traffic_type = PCR;
+			priority = 2;
+			act = ACT_OTH;		// Peach Cell Rate pacing, at a lower priority
+			break;
+		}
+		default:
+		{
+			fua_warning("Unsupported ATM traffic class tx_qos->traffic_class: 0x%x\n", tx_qos->traffic_class);
+			return -EFAULT;
+		}
 	}
 
 	fua_vcc->tx_intq_num = INT_TX_QUE;
@@ -1706,7 +1728,7 @@ int open_tx(struct atm_vcc *vcc)
 			break;
 		}
 	}
-	dump_tct(fua_vcc->tct, fua_vcc->aal);
+//	dump_tct(fua_vcc->tct, fua_vcc->aal);
 
 	if (i == fua_info->max_channel) {
 		free_bds(&f_p->bd_pool, fua_vcc->txbase,
@@ -1732,7 +1754,8 @@ int open_tx(struct atm_vcc *vcc)
 			fua_dev->cps, &pcr, &pcr_fraction);
 	if (!pcr && !pcr_fraction) {
 		pcr = 1;
-		pcr_fraction = 140;
+//		pcr_fraction = 140;
+		pcr_fraction = 0;
 	}
 	if (pcr > fua_dev->slot_count)
 	{
@@ -1740,8 +1763,8 @@ int open_tx(struct atm_vcc *vcc)
 		pcr = fua_dev->slot_count -1;
 		pcr_fraction = 0;
 	}
-	fua_warning("traffic_type %d, max_pcr %d, pcr %d, cps %d, slots %d, Setting Tx PCR %d.%d\n",
-			 fua_vcc->traffic_type, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction);
+	fua_warning("ATM Channel Type %d, priority %d, max_pcr %d, pcr %d, cps %d, slots %d, Setting Tx PCR %d.%d\n",
+			 act, priority, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction);
 	TCT_SET_PCR(tct, pcr);
 	TCT_SET_PCR_FRACTION(tct, pcr_fraction);
 	out_be16(&tct->apclc, 0);
@@ -1759,11 +1782,11 @@ int open_tx(struct atm_vcc *vcc)
 	fua_vcc->vcc = vcc;
 
 	/* Lets have a look at how the UCC is set up */
-	dump_ucc_para(f_p);
+//	dump_ucc_para(f_p);
 
 	/* start this channel. Put this channel into APC scheduling table */
 	if (!fua_vcc->avcf) {
-		atm_transmit(fua_vcc, 0, 0, 0);
+		atm_transmit(fua_vcc, act, priority, 0);
 	}
 	return 0;
 }
@@ -1773,12 +1796,22 @@ void close_tx(struct atm_vcc *vcc)
 	struct fua_private *f_p;
 	struct fua_vcc *fua_vcc;
 	struct sk_buff *skb;
+	int timeout = 10000;
 
 	f_p = ((struct fua_device *)(vcc->dev->dev_data))->fua_priv;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 
 	/* stop this channel */
 	TCT_STP(fua_vcc->tct);
+
+	/* Wait for QE to deactivate this channel before freeing memory */
+	while (fua_vcc->tct->attr & TCT_ENTRY_ATTR_VCON) {
+		if (timeout-- < 0) {
+			fua_warning("failed to stop TX channel vpi.vci=%d.%d\n", fua_vcc->vcc->vpi, fua_vcc->vcc->vci);
+			break;
+		}
+		udelay(1);
+	}
 
 	while ((skb = skb_dequeue(&fua_vcc->tx_list)) != NULL) {
 		if (vcc->pop)
@@ -1927,7 +1960,7 @@ int open_rx(struct atm_vcc *vcc)
 
 	skb_queue_head_init(&fua_vcc->rx_list);
 	fua_vcc->vcc = vcc;
-dump_rct(rct, ATM_AAL5);
+	//dump_rct(rct, ATM_AAL5);
 	return 0;
 out:
 	bd = fua_vcc->rxbase;
@@ -2028,9 +2061,9 @@ enum tran_res do_tx(struct sk_buff *skb)
 		flush_dcache_range((size_t) bd,
 				(size_t) (bd + sizeof(struct qe_bd)));
 
-		fua_dump("TCT state after BD len=%d ready\n", skb->len);
-		dump_tct(fua_vcc->tct, fua_vcc->aal);
-		dump_apc(&fua_dev->fua_priv->apc_tbl_base[fua_dev->phy_info->phy_id]);
+//		fua_dump("TCT state after BD len=%d ready\n", skb->len);
+//		dump_tct(fua_vcc->tct, fua_vcc->aal);
+//		dump_apc(&fua_dev->fua_priv->apc_tbl_base[fua_dev->phy_info->phy_id]);
 
 		if (fua_vcc->avcf)
 			atm_transmit(fua_vcc, 0, 0, 0);
@@ -2214,6 +2247,10 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 	struct qe_bd *bd;
 
 	intr_attr = entry->attr;
+	if (entry->channel_code > fua_priv->fua_info->max_channel) {
+		fua_warning("Error: Interrupt from invalid channel %d attr 0x%04x\n", entry->channel_code, entry->attr);
+		return;
+	}
 	if (intr_attr & INT_QUE_ENT_ATTR_TBNR) {
 		fua_warning("channel %d got tx buffer no ready intr\n",
 			entry->channel_code);
@@ -2229,7 +2266,7 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		fua_warning("channel %d got busy intr because BDs are inadequate\n",
 			entry->channel_code);
 		/* At this point, the channel halted. RXBD ring full. need do somthing */
-		fua_debug("intr_entry->attr: 0x%x\n", entry->attr);
+		fua_warning("intr_entry->attr: 0x%x\n", entry->attr);
 		vcc = fua_priv->rx_vcc[entry->channel_code];
 		if (vcc) {
 			atomic_inc(&vcc->stats->rx_drop);
@@ -2269,7 +2306,8 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 			i++;
 			if (bd->status & AAL5_RXBD_ATTR_F) {
 				if (fua_vcc->first != NULL) {
-					fua_warning("\tmisordered first bd i=%d\n", i);
+					fua_debug("\tmisordered first bd i=%d on channel %d vpi.vci=%d.%d\n",
+						i, entry->channel_code, vcc->vpi, vcc->vci);
 					//fua_debug("\tmisordered first bd\n");
 					discard_rx_bd(fua_vcc,fua_vcc->first);
 				}
@@ -2279,7 +2317,8 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 			fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 			if (bd->status & AAL5_RXBD_ATTR_L) {
 				if (!fua_vcc->first) {
-					fua_warning("last bd[%d] found without a first bd i=%d\n", bd_index(fua_vcc, bd), i);
+					fua_debug("last bd[%d] found without a first bd i=%d on channel %d vpi.vci=%d.%d\n",
+						bd_index(fua_vcc, bd), i, entry->channel_code, vcc->vpi, vcc->vci);
 					discard_rx_bd(fua_vcc, fua_vcc->rxcur);	// first bd not set yet, so discard this partial frame
 				}
 				else {
@@ -2892,7 +2931,7 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	}
 	fua_debug("returned from suni5384_init()\n");
 
-	phy_info->prio_level = 2;
+	phy_info->prio_level = 3;
 	phy_info->max_iteration = 3;
 	phy_info->scheduler_mode = 0;
 
@@ -2998,7 +3037,7 @@ static int fua_priv_init(struct device * dev, struct fua_private * f_p)
 
 	if(bd_pool_init(&f_p->bd_pool,fua_info->max_bd))
 		return -EFAULT;
-	dump_bd_pool(&f_p->bd_pool, 0);
+//	dump_bd_pool(&f_p->bd_pool, 0);
 
 	i = j = 0;
 	list_for_each_safe(p, n, &f_p->dev_list) {

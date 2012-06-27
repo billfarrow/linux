@@ -127,7 +127,8 @@
 			line_bitr = <155000000>;
 			max_bitr = <155000000>;
 //			min_bitr = <50000000>;
-			min_bitr = <5000000>;
+//			min_bitr = <5000000>;	// 32 slots
+			min_bitr = <523648>;	// 296
 			port-width = <1>;	// 0 = 8 bit Utopia, 1 = 16 bit Utopia
 		};
 
