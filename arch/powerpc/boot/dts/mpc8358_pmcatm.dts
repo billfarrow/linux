@@ -111,7 +111,7 @@
  			compatible = "fsl,mpc8358_pmcatm-cpld";
 			reg = <1 0 0x100>;
 			interrupt-parent = < &ipic >;
-			interrupts = <18 0x8 19 0x8>;
+			interrupts = <18 0x8 19 0x8>;	// IRQ2 (18) & IRQ3 (19) level triggered, active low (0x8)
 		};
 
 		pm5384: fua-phy@2,0 {

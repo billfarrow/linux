@@ -68,13 +68,13 @@
 struct fua_info fua_primary_info = {
 	.max_thread = 0x10,
 	.max_channel = 0x200,
-	.max_bd = 0x1000,
+	.max_bd = 0x8000,		/* 128 channels (64 bi-directional). max_bd = 128 * bd_per_channel  */
 	.bd_per_channel = 0x100,
 	.max_intr_que = 0x4,
 	.intr_ent_per_que = 0x16,
 	.intr_threshold = 1,
-	.vci_filter = 0x1BFF,
-	.vc_mask = 0xFF, /*just 256 items for one entry in vp level table */
+	.vci_filter = 0x0000, /* 0x1BFF, orig value. If bit is high, vci cells go to raw queue */
+	.vc_mask = 0x3FF, /* 1024 items for one entry in vp level table */
 	.vpc_info = 0x0000F000, /* enable phy_id */
 	.uf_info = {
 			.bd_mem_part = MEM_PART_SYSTEM,
@@ -1811,7 +1811,7 @@ void close_tx(struct atm_vcc *vcc)
 			fua_warning("failed to stop TX channel vpi.vci=%d.%d\n", fua_vcc->vcc->vpi, fua_vcc->vcc->vci);
 			break;
 		}
-		udelay(1);
+		udelay(10);
 	}
 
 	while ((skb = skb_dequeue(&fua_vcc->tx_list)) != NULL) {
@@ -2000,6 +2000,7 @@ void close_rx(struct atm_vcc *vcc)
 	skb_queue_purge(&fua_vcc->rx_list);
 	bd = fua_vcc->rxbase;
 	for (i = 0; i < fua_info->bd_per_channel; i++) {
+//		printk("%s() bd 0x%08X bd->buf 0x%08X [0x%08X]\n", __func__, (uint32_t)bd, (uint32_t)phys_to_virt(bd->buf), (uint32_t)bd->buf);
 		if (bd->buf)
 			kfree((void *)phys_to_virt(bd->buf));
 		bd->buf = 0;
@@ -2334,6 +2335,8 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		fua_debug("channel %d receive a whole aal5 frame\n",
 				entry->channel_code);
 		vcc = fua_priv->rx_vcc[entry->channel_code];
+		if (vcc == NULL)
+			return;		// The channel must have been closed
 		fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 
 		bd = fua_vcc->rxcur;
