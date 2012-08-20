@@ -380,8 +380,11 @@ static int __vcc_connect(struct atm_vcc *vcc, struct atm_dev *dev, short vpi,
 
 	if ((vpi != ATM_VPI_UNSPEC && vpi != ATM_VPI_ANY &&
 	    vpi >> dev->ci_range.vpi_bits) || (vci != ATM_VCI_UNSPEC &&
-	    vci != ATM_VCI_ANY && vci >> dev->ci_range.vci_bits))
+	    vci != ATM_VCI_ANY && vci >> dev->ci_range.vci_bits)) {
+		printk(KERN_WARNING "%s() Error vpi=%d vci=%d vpi_bits=%d vci_bits=%d\n",
+			__func__, vpi, vci, dev->ci_range.vpi_bits, dev->ci_range.vci_bits); 
 		return -EINVAL;
+	}
 	if (vci > 0 && vci < ATM_NOT_RSV_VCI && !capable(CAP_NET_BIND_SERVICE))
 		return -EPERM;
 	error = -ENODEV;
@@ -500,13 +503,17 @@ int vcc_connect(struct socket *sock, int itf, short vpi, int vci)
 	}
 	if (!dev)
 		return -ENODEV;
+	if (!sock) printk(KERN_WARNING "%s() %d sock is null\n", __func__, __LINE__); 
 	error = __vcc_connect(vcc, dev, vpi, vci);
+	if (!sock) printk(KERN_WARNING "%s() %d sock is null\n", __func__, __LINE__); 
 	if (error) {
 		atm_dev_put(dev);
 		return error;
 	}
+	if (!sock) printk(KERN_WARNING "%s() %d sock is null\n", __func__, __LINE__); 
 	if (vpi == ATM_VPI_UNSPEC || vci == ATM_VCI_UNSPEC)
 		set_bit(ATM_VF_PARTIAL, &vcc->flags);
+	if (!sock) printk(KERN_WARNING "%s() %d sock is null\n", __func__, __LINE__); 
 	if (test_bit(ATM_VF_READY, &ATM_SD(sock)->flags))
 		sock->state = SS_CONNECTED;
 	return 0;

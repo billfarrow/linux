@@ -68,13 +68,13 @@
 struct fua_info fua_primary_info = {
 	.max_thread = 0x10,
 	.max_channel = 0x200,
-	.max_bd = 0x8000,		/* 128 channels (64 bi-directional). max_bd = 128 * bd_per_channel  */
+	.max_bd = 0x1000,
 	.bd_per_channel = 0x100,
 	.max_intr_que = 0x4,
 	.intr_ent_per_que = 0x16,
 	.intr_threshold = 1,
-	.vci_filter = 0x0000, /* 0x1BFF, orig value. If bit is high, vci cells go to raw queue */
-	.vc_mask = 0x3FF, /* 1024 items for one entry in vp level table */
+	.vci_filter = 0x1BFF,
+	.vc_mask = 0xFF, /*just 256 items for one entry in vp level table */
 	.vpc_info = 0x0000F000, /* enable phy_id */
 	.uf_info = {
 			.bd_mem_part = MEM_PART_SYSTEM,
@@ -96,6 +96,8 @@ struct fua_info fua_primary_info = {
 			.synl = UCC_FAST_SYNC_LEN_NOT_USED,
 	},
 };
+
+const char *class_name[] = {"NONE", "UBR", "CBR", "VBR", "ABR", "ANYCLASS"};
 
 void dump_tct(tct_entry_t * tct, u32 aal);
 
@@ -1576,7 +1578,7 @@ void atm_transmit(struct fua_vcc *fua_vcc, u8 act, u8 pri, u16 bt)
 //	fua_debug("APC state after transmit\n");
 //	dump_apc(&f_p->apc_tbl_base[fua_dev->phy_info->phy_id]);
 
-	fua_warning("atm_transmit complete\n");
+	fua_debug("atm_transmit complete\n");
 	return;
 }
 
@@ -1646,7 +1648,6 @@ int open_tx(struct atm_vcc *vcc)
 	u16 pcr;
 	u8 pcr_fraction;
 	int i;
-	const char *class_name[] = {"NONE", "UBR", "CBR", "VBR", "ABR", "ANYCLASS"};
 	uint8_t priority;
 	uint8_t act;		// ATM Channel Type
 
@@ -1656,7 +1657,7 @@ int open_tx(struct atm_vcc *vcc)
 	fua_info = f_p->fua_info;
 	fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 	tx_qos = &vcc->qos.txtp;
-	fua_warning("Open Channel %d.%d class %s max %d pcr %d min %d\n", vcc->vpi, vcc->vci,
+	fua_debug("Open Tx Channel %d.%d class %s max %d pcr %d min %d\n", vcc->vpi, vcc->vci,
 			class_name[vcc->qos.txtp.traffic_class], vcc->qos.txtp.max_pcr, vcc->qos.txtp.pcr, vcc->qos.txtp.min_pcr);
 	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
 			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
@@ -1877,8 +1878,10 @@ int open_rx(struct atm_vcc *vcc)
 	fua_info = f_p->fua_info;
 	fua_vcc = (struct fua_vcc *)vcc->dev_data;
 	rx_qos = &vcc->qos.rxtp;
-	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
-			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
+//	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
+//			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
+	fua_debug("Open Rx Channel %d.%d class %s max %d pcr %d min %d\n", vcc->vpi, vcc->vci,
+			class_name[vcc->qos.rxtp.traffic_class], vcc->qos.rxtp.max_pcr, vcc->qos.rxtp.pcr, vcc->qos.rxtp.min_pcr);
 
 	if ((rx_qos->traffic_class == ATM_CBR)
 		|| (rx_qos->traffic_class == ATM_UBR)
@@ -2306,7 +2309,7 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 			i++;
 			if (bd->status & AAL5_RXBD_ATTR_F) {
 				if (fua_vcc->first != NULL) {
-					fua_debug("\tmisordered first bd i=%d on channel %d vpi.vci=%d.%d\n",
+					fua_warning("\tmisordered first bd i=%d on channel %d vpi.vci=%d.%d\n",
 						i, entry->channel_code, vcc->vpi, vcc->vci);
 					//fua_debug("\tmisordered first bd\n");
 					discard_rx_bd(fua_vcc,fua_vcc->first);
@@ -2317,7 +2320,7 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 			fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 			if (bd->status & AAL5_RXBD_ATTR_L) {
 				if (!fua_vcc->first) {
-					fua_debug("last bd[%d] found without a first bd i=%d on channel %d vpi.vci=%d.%d\n",
+					fua_warning("last bd[%d] found without a first bd i=%d on channel %d vpi.vci=%d.%d\n",
 						bd_index(fua_vcc, bd), i, entry->channel_code, vcc->vpi, vcc->vci);
 					discard_rx_bd(fua_vcc, fua_vcc->rxcur);	// first bd not set yet, so discard this partial frame
 				}
@@ -2358,7 +2361,7 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 			|| (bd->status & AAL5_RXBD_ATTR_LNE)
 			|| (bd->status & AAL5_RXBD_ATTR_CRE)) {
 			/* receive a abort message */
-			fua_debug("\tabort frame for %d channel\n",
+			fua_warning("\tabort frame for %d channel\n",
 					 entry->channel_code);
 			fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 			discard_rx_bd(fua_vcc, fua_vcc->first);
