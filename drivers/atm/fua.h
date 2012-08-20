@@ -549,7 +549,7 @@ typedef struct	intr_que_entry {
 #define MAX_QUE_NUMBER 4
 
 #define MAX_VPI_BITS	0
-#define MAX_VCI_BITS	8
+#define MAX_VCI_BITS	10
 
 #define MAX_INTERNAL_CHANNEL_CODE	255
 #define MAX_INTERNAL_RCT	MAX_INTERNAL_CHANNEL_CODE

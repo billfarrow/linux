@@ -68,13 +68,13 @@
 struct fua_info fua_primary_info = {
 	.max_thread = 0x10,
 	.max_channel = 0x200,
-	.max_bd = 0x1000,
+	.max_bd = 0x8000,		/* 128 channels (64 bi-directional). max_bd = 128 * bd_per_channel  */
 	.bd_per_channel = 0x100,
 	.max_intr_que = 0x4,
 	.intr_ent_per_que = 0x16,
 	.intr_threshold = 1,
-	.vci_filter = 0x1BFF,
-	.vc_mask = 0xFF, /*just 256 items for one entry in vp level table */
+	.vci_filter = 0x0000, /* 0x1BFF, orig value. If bit is high, vci cells go to raw queue */
+	.vc_mask = 0x3FF, /* 1024 items for one entry in vp level table */
 	.vpc_info = 0x0000F000, /* enable phy_id */
 	.uf_info = {
 			.bd_mem_part = MEM_PART_SYSTEM,
