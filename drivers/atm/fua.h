@@ -685,6 +685,26 @@ struct fua_private{
 
 	u8 cps[MAX_PHY_NUMBER]; //???
 
+	/* Error Statistics */
+	atomic_t tbnr_vcc_closed;
+	atomic_t tbnr_vcc_not_ready;
+	atomic_t tbnr_drop;
+	atomic_t bsy_drop;
+	atomic_t txb_vcc_closed;
+	atomic_t txb_vcc_not_ready;
+	atomic_t rxb_vcc_closed;
+	atomic_t rxb_vcc_not_ready;
+	atomic_t rxb_first_miss;
+	atomic_t rxb_last_miss;
+	atomic_t rxf_vcc_closed;
+	atomic_t rxf_vcc_not_ready;
+	atomic_t rxf_miss_first;
+	atomic_t rxf_first_again;
+	atomic_t rxf_abort;
+	atomic_t rxf_crc_error;
+	atomic_t rxf_length_error;
+	atomic_t do_rx_skb_alloc;
+
 	/* statistics */
 	int interrupts;
 	struct list_head dev_list;

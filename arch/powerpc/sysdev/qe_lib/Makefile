@@ -1,6 +1,8 @@
 #
 # Makefile for the linux ppc-specific parts of QE
 #
+#CFLAGS_upc.o := -DEXTERNAL_RATE
+
 obj-$(CONFIG_QUICC_ENGINE)+= qe.o qe_ic.o qe_io.o
 
 obj-$(CONFIG_UCC)	+= ucc.o
