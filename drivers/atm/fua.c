@@ -766,7 +766,7 @@ struct qe_bd *alloc_bds(bd_pool_t *bd_pool, int number)
 	}
 	if (i == bd_pool->number) {
 		spin_unlock(&bd_pool->lock);
-		fua_warning("Do not enough bds in bd_pool;"
+		fua_warning("Not enough bds in bd_pool;"
 			"number:0x%x frees:0x%x request:0x%x\n",
 			bd_pool->number, bd_pool->frees, number);
 		dump_bd_pool(bd_pool, 0);
@@ -2355,7 +2355,7 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 						atomic_inc(&fua_priv->rxb_last_miss);
 //						fua_warning("last bd[%d] found without a first bd i=%d on channel %d vpi.vci=%d.%d\n",
 //							bd_index(fua_vcc, bd), i, entry->channel_code, vcc->vpi, vcc->vci);
-//						discard_rx_bd(fua_vcc, fua_vcc->rxcur);	// first bd not set yet, so discard this partial frame
+						discard_rx_bd(fua_vcc, fua_vcc->rxcur);	// first bd not set yet, so discard this partial frame
 					}
 					else {
 //						dump_aal5_crc(fua_vcc, bd, "RXB last bd");
