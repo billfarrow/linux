@@ -1764,8 +1764,8 @@ int open_tx(struct atm_vcc *vcc)
 		pcr = fua_dev->slot_count -1;
 		pcr_fraction = 0;
 	}
-	fua_warning("ATM Channel Type %d, priority %d, max_pcr %d, pcr %d, cps %d, slots %d, Setting Tx PCR %d.%d\n",
-			 act, priority, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction);
+	fua_warning("ATM Channel %d.%d Type %d, priority %d, max_pcr %d, pcr %d, cps %d, slots %d, Setting Tx PCR %d.%d\n",
+			 vcc->vpi, vcc->vci, act, priority, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction);
 	TCT_SET_PCR(tct, pcr);
 	TCT_SET_PCR_FRACTION(tct, pcr_fraction);
 	out_be16(&tct->apclc, 0);
@@ -2867,6 +2867,29 @@ void fua_dev_close(struct atm_dev *dev)
 	return;
 }
 
+static void fua_clear_statistics(struct fua_private * f_p)
+{
+	/* Clear the statistics */
+	atomic_set(&f_p->tbnr_vcc_closed, 0);
+	atomic_set(&f_p->tbnr_vcc_not_ready, 0);
+	atomic_set(&f_p->tbnr_drop, 0);
+	atomic_set(&f_p->bsy_drop, 0);
+	atomic_set(&f_p->txb_vcc_closed, 0);
+	atomic_set(&f_p->txb_vcc_not_ready, 0);
+	atomic_set(&f_p->rxb_vcc_closed, 0);
+	atomic_set(&f_p->rxb_vcc_not_ready, 0);
+	atomic_set(&f_p->rxb_first_miss, 0);
+	atomic_set(&f_p->rxb_last_miss, 0);
+	atomic_set(&f_p->rxf_vcc_closed, 0);
+	atomic_set(&f_p->rxf_vcc_not_ready, 0);
+	atomic_set(&f_p->rxf_miss_first, 0);
+	atomic_set(&f_p->rxf_first_again, 0);
+	atomic_set(&f_p->rxf_abort, 0);
+	atomic_set(&f_p->rxf_crc_error, 0);
+	atomic_set(&f_p->rxf_length_error, 0);
+	atomic_set(&f_p->do_rx_skb_alloc, 0);
+}
+
 static int fua_proc_read(struct atm_dev *dev, loff_t *pos, char *page)
 {
 	int left, count;
@@ -2883,7 +2906,7 @@ static int fua_proc_read(struct atm_dev *dev, loff_t *pos, char *page)
 					fua_dev->phy_info->phy_id;
 
 	if (!left--) {
-		return sprintf(page, "QE UCC3 atm driver :) \n"
+		count = sprintf(page, "QE UCC3 atm driver :) \n"
 			"tbnr_vcc_closed    %d\n"
 			"tbnr_vcc_not_ready %d\n"
 			"tbnr_drop          %d\n"
@@ -2921,6 +2944,8 @@ static int fua_proc_read(struct atm_dev *dev, loff_t *pos, char *page)
 			atomic_read(&fua_priv->rxf_length_error),
 			atomic_read(&fua_priv->do_rx_skb_alloc)
 		);
+		fua_clear_statistics(fua_priv);
+		return count;
 	}
 	if (!left--) {
 		count = 0;
@@ -3201,24 +3226,7 @@ static int fua_priv_init(struct device * dev, struct fua_private * f_p)
 		goto out2;
 
 	/* Clear the statistics */
-	atomic_set(&f_p->tbnr_vcc_closed, 0);
-	atomic_set(&f_p->tbnr_vcc_not_ready, 0);
-	atomic_set(&f_p->tbnr_drop, 0);
-	atomic_set(&f_p->bsy_drop, 0);
-	atomic_set(&f_p->txb_vcc_closed, 0);
-	atomic_set(&f_p->txb_vcc_not_ready, 0);
-	atomic_set(&f_p->rxb_vcc_closed, 0);
-	atomic_set(&f_p->rxb_vcc_not_ready, 0);
-	atomic_set(&f_p->rxb_first_miss, 0);
-	atomic_set(&f_p->rxb_last_miss, 0);
-	atomic_set(&f_p->rxf_vcc_closed, 0);
-	atomic_set(&f_p->rxf_vcc_not_ready, 0);
-	atomic_set(&f_p->rxf_miss_first, 0);
-	atomic_set(&f_p->rxf_first_again, 0);
-	atomic_set(&f_p->rxf_abort, 0);
-	atomic_set(&f_p->rxf_crc_error, 0);
-	atomic_set(&f_p->rxf_length_error, 0);
-	atomic_set(&f_p->do_rx_skb_alloc, 0);
+	fua_clear_statistics(f_p);
 
 	return 0;
 

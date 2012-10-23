@@ -263,7 +263,7 @@ static int set_framing(struct atm_dev *dev, void __user *arg)
 
 static int suni_ioctl(struct atm_dev *dev,unsigned int cmd,void __user *arg)
 {
-	printk(KERN_DEBUG "%s(): cmd %d\n", __func__, cmd);
+//	printk(KERN_DEBUG "%s(): cmd %d\n", __func__, cmd);
 	switch (cmd) {
 		case SONET_GETSTATZ:
 		case SONET_GETSTAT:
@@ -287,7 +287,7 @@ static int suni_ioctl(struct atm_dev *dev,unsigned int cmd,void __user *arg)
 				return -EPERM;
 			return set_loopback(dev,(int)(unsigned long)arg);
 		case ATM_GETLOOP:
-			printk(KERN_DEBUG "%s():%d loop_mode 0x%x \n", __func__,__LINE__,PRIV(dev)->loop_mode);
+//			printk(KERN_DEBUG "%s():%d loop_mode 0x%x \n", __func__,__LINE__,PRIV(dev)->loop_mode);
 			return put_user(PRIV(dev)->loop_mode,(int __user *)arg) ?
 				-EFAULT : 0;
 		case ATM_QUERYLOOP:
