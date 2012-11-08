@@ -293,6 +293,7 @@ static int addr_comp_lookup_remove(add_lookup_tbl_t *addr_tbl, int uid,
 	u32 vp_lvl_mask;
 	u32 offset;
 	u16 vc_mask, vc_offset;
+	u32 mask, value;
 	u8 vclt_sf;
 	vplt_entry_t *vplt_entry;
 
@@ -304,10 +305,10 @@ static int addr_comp_lookup_remove(add_lookup_tbl_t *addr_tbl, int uid,
 	vp_value = ((uid & 0x3) << 20) | ((phy_id & 0xFF) << 12) | (vpi & 0xFFF);
 	offset = i = j = 0;
 	for (i = 0; i < VP_MASK_LEN; i++) {
-		vp_lvl_mask >>= i;
-		vp_value >>= i;
-		if (vp_lvl_mask & 1) {
-			offset += (vp_value & 1) << j;
+		mask = vp_lvl_mask >> i;
+		value = vp_value >> i;
+		if (mask & 1) {
+			offset += (value & 1) << j;
 			j++;
 		}
 	}
@@ -317,10 +318,10 @@ static int addr_comp_lookup_remove(add_lookup_tbl_t *addr_tbl, int uid,
 
 	offset = i = j = 0;
 	for (i = 0; i < VC_MASK_LEN; i++) {
-		vc_mask >>= i;
-		vci >>= i;
-		if (vc_mask & 1) {
-			offset += (vci & 1) << j;
+		mask = vc_mask >> i;
+		value = vci >> i;
+		if (mask & 1) {
+			offset += (value & 1) << j;
 			j++;
 		}
 	}
@@ -2171,7 +2172,7 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	bd_tmp = fua_vcc->first;
 	fua_vcc->first = NULL;
 	frame_len = bd->length;
-	skb = atm_alloc_charge(vcc, frame_len, GFP_ATOMIC);
+	skb = atm_alloc_charge(vcc, frame_len + 48*2, GFP_ATOMIC);	// include space for an AAL5 trailer
 	if (!skb) {
 		atomic_inc(&fua_priv->do_rx_skb_alloc);
 //		fua_warning("Alloc sk_buff length %d failed: sk_rmem_alloc %d sk_rcvbuf %d\n", frame_len,
@@ -2181,9 +2182,9 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 		return;
 	}
 	if (!bd_tmp) {
-		fua_warning("Invalid Buffer Descriptor. bd: 0x%08x\n", bd_tmp);
+		fua_warning("Invalid Buffer Descriptor. bd: 0x%08x\n", (uint32_t)bd_tmp);
 		fua_err("buffer descriptor is NULL. bd: 0x%08x bd_prev: 0x%08x cur: 0x%08x base: 0x%08x count=%d size=%d\n",
-				 bd, bd_prev, fua_vcc->rxcur, fua_vcc->rxbase, count, sizeof(*bd));
+				 (uint32_t)bd, (uint32_t)bd_prev, (uint32_t)fua_vcc->rxcur, (uint32_t)fua_vcc->rxbase, count, sizeof(*bd));
 		discard_rx_bd(fua_vcc, bd);
 		atomic_inc(&vcc->stats->rx_drop);
 		return;
@@ -2200,7 +2201,7 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	while (bd_tmp != bd) {
 		if (!bd_tmp) {
 			fua_err("buffer descriptor is NULL. bd: 0x%08x bd_prev: 0x%08x cur: 0x%08x base: 0x%08x count=%d size=%d\n",
-				 bd, bd_prev, fua_vcc->rxcur, fua_vcc->rxbase, count, sizeof(*bd));
+				 (uint32_t)bd, (uint32_t)bd_prev, (uint32_t)fua_vcc->rxcur, (uint32_t)fua_vcc->rxbase, count, sizeof(*bd));
 			dump_bd_pool(&fua_priv->bd_pool, 0);
 			dump_bd(bd, 0);
 			dump_bd(bd_prev, 0);
