@@ -2948,6 +2948,7 @@ static int fua_proc_read(struct atm_dev *dev, loff_t *pos, char *page)
 		fua_clear_statistics(fua_priv);
 		return count;
 	}
+/*
 	if (!left--) {
 		count = 0;
 		list_for_each(p, &fua_dev->vcc_list) {
@@ -2984,11 +2985,14 @@ static int fua_proc_read(struct atm_dev *dev, loff_t *pos, char *page)
 					 fua_vcc->txbase,
 					 fua_vcc->txcur);
 		}
-		count += sprintf(page + count, "UNI STATISTICS: "
+		return count;
+	}
+*/
+	if (!left--) {
+		return sprintf(page, "UNI STATISTICS: "
 				 "\nutopia error: %d	lookup failure: %d\n",
 				 in_be16(&uni_stat->utopiae),
 				 in_be16(&uni_stat->mic_count));
-		return count;
 	}
 	return 0;
 }
