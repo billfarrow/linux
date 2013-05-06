@@ -125,10 +125,13 @@
 			ucc-handle = < &ucc3 >;
 
 			line_bitr = <155000000>;
-			max_bitr = <155000000>;
+//			max_bitr = <155000000>; // cps = 1
+//			max_bitr = <77500000>; // cps = 2
+			max_bitr = <38750000>; // cps = 4
 //			min_bitr = <50000000>;
 //			min_bitr = <5000000>;	// 32 slots
 			min_bitr = <523648>;	// 296
+//			min_bitr = <1210937>;	// 128 / cps
 			port-width = <1>;	// 0 = 8 bit Utopia, 1 = 16 bit Utopia
 		};
 

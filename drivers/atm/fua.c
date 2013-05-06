@@ -1755,9 +1755,10 @@ int open_tx(struct atm_vcc *vcc)
 	pcr_calc(tx_qos->max_pcr, tx_qos->pcr,
 			fua_dev->cps, &pcr, &pcr_fraction);
 	if (!pcr && !pcr_fraction) {
-		pcr = 1;
-//		pcr_fraction = 140;
-		pcr_fraction = 0;
+//		pcr = 1;
+		pcr = 0;
+		pcr_fraction = 140;
+//		pcr_fraction = 0;
 	}
 	if (pcr > fua_dev->slot_count)
 	{
@@ -1765,8 +1766,9 @@ int open_tx(struct atm_vcc *vcc)
 		pcr = fua_dev->slot_count -1;
 		pcr_fraction = 0;
 	}
-	fua_warning("ATM Channel %d.%d Type %d, priority %d, max_pcr %d, pcr %d, cps %d, slots %d, Setting Tx PCR %d.%d\n",
-			 vcc->vpi, vcc->vci, act, priority, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction);
+	fua_warning("ATM Channel %d.%d Type %d, priority %d, max_pcr %d, pcr %d, cps %d, slots %d, Setting Tx PCR %d.%d %s TCTE %d\n",
+			 vcc->vpi, vcc->vci, act, priority, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction,
+			(fua_vcc->tx_cc > MAX_INTERNAL_CHANNEL_CODE?"Ext":"Int"), fua_vcc->tx_cc);
 	TCT_SET_PCR(tct, pcr);
 	TCT_SET_PCR_FRACTION(tct, pcr_fraction);
 	out_be16(&tct->apclc, 0);
