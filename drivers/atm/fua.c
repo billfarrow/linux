@@ -68,8 +68,8 @@
 struct fua_info fua_primary_info = {
 	.max_thread = 0x10,
 	.max_channel = 0x200,
-	.max_bd = 0x8000,		/* 128 channels (64 bi-directional). max_bd = 128 * bd_per_channel  */
-	.bd_per_channel = 0x100,
+	.max_bd = 0x10000,		/* 128 channels (64 bi-directional). max_bd = 128 * bd_per_channel  */
+	.bd_per_channel = 0x200,
 	.max_intr_que = 0x4,
 	.intr_ent_per_que = 0x16,
 	.intr_threshold = 1,
@@ -1951,7 +1951,8 @@ int open_rx(struct atm_vcc *vcc)
 
 	out_be16(&rct->aal5.attr, 0);
 	out_be16(&rct->aal5.res, 0);
-	setbits16(&rct->aal5.attr, AAL5_RCT_RXFM | AAL5_RCT_RXBM);
+//	setbits16(&rct->aal5.attr, AAL5_RCT_RXFM | AAL5_RCT_RXBM);
+	setbits16(&rct->aal5.attr, AAL5_RCT_RXFM);	// Interrupt on complete frames only
 
 	out_be16(&rct->rbd_offset, 0);
 	out_be16(&rct->mrblr, fua_vcc->rbuf_size);
@@ -2174,19 +2175,21 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 	bd_tmp = fua_vcc->first;
 	fua_vcc->first = NULL;
 	frame_len = bd->length;
+
+	if (!bd_tmp) {
+		fua_warning("Invalid Buffer Descriptor. bd: 0x%08x\n", (uint32_t)bd_tmp);
+		fua_err("buffer descriptor is NULL. bd: 0x%08x bd_prev: 0x%08x cur: 0x%08x base: 0x%08x count=%d size=%d\n",
+				 (uint32_t)bd, (uint32_t)bd_prev, (uint32_t)fua_vcc->rxcur, (uint32_t)fua_vcc->rxbase, count, sizeof(*bd));
+		discard_rx_bd(fua_vcc, bd);
+		atomic_inc(&vcc->stats->rx_drop);
+		return;
+	}
+
 	skb = atm_alloc_charge(vcc, frame_len + 48*2, GFP_ATOMIC);	// include space for an AAL5 trailer
 	if (!skb) {
 		atomic_inc(&fua_priv->do_rx_skb_alloc);
 //		fua_warning("Alloc sk_buff length %d failed: sk_rmem_alloc %d sk_rcvbuf %d\n", frame_len,
 //			 atomic_read(&sk_atm(vcc)->sk_rmem_alloc), sk_atm(vcc)->sk_rcvbuf);
-		discard_rx_bd(fua_vcc, bd);
-		atomic_inc(&vcc->stats->rx_drop);
-		return;
-	}
-	if (!bd_tmp) {
-		fua_warning("Invalid Buffer Descriptor. bd: 0x%08x\n", (uint32_t)bd_tmp);
-		fua_err("buffer descriptor is NULL. bd: 0x%08x bd_prev: 0x%08x cur: 0x%08x base: 0x%08x count=%d size=%d\n",
-				 (uint32_t)bd, (uint32_t)bd_prev, (uint32_t)fua_vcc->rxcur, (uint32_t)fua_vcc->rxbase, count, sizeof(*bd));
 		discard_rx_bd(fua_vcc, bd);
 		atomic_inc(&vcc->stats->rx_drop);
 		return;
@@ -2208,6 +2211,8 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 			dump_bd(bd, 0);
 			dump_bd(bd_prev, 0);
 //			break;
+			atm_return(vcc, skb->truesize);
+			skb_free_datagram(sk_atm(vcc), skb);
 			discard_rx_bd(fua_vcc, bd);
 			atomic_inc(&vcc->stats->rx_drop);
 			return;
@@ -2226,10 +2231,10 @@ static void do_rx(struct fua_private *fua_priv, u32 channel_code, struct qe_bd *
 					| AAL5_RXBD_ATTR_I
 					| (bd_tmp->status & AAL5_RXBD_ATTR_W));
 		bd_prev = bd_tmp;
-		bd_tmp =
-			bd_get_next(bd_tmp, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
+		bd_tmp = bd_get_next(bd_tmp, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 		count++;
-	}
+	} // while
+
 	if (sum_of_len < frame_len)
 		memcpy(ptr, phys_to_virt(bd_tmp->buf), frame_len - sum_of_len);
 //	if (frame_len < 6144) {
@@ -2256,6 +2261,10 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 	struct qe_bd *bd;
 
 	intr_attr = entry->attr;
+	if (intr_attr & INT_QUE_ENT_ATTR_UPC) {
+		// This is a UPC-ATM Policier event (QEIWRM Section 11.3.14.3)
+		return;
+	}
 	if (entry->channel_code > fua_priv->fua_info->max_channel) {
 		fua_warning("Error: Interrupt from invalid channel %d attr 0x%04x\n", entry->channel_code, entry->attr);
 		return;
@@ -2290,6 +2299,8 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		atomic_inc(&fua_priv->bsy_drop);
 		vcc = fua_priv->rx_vcc[entry->channel_code];
 		if (vcc) {
+			fua_vcc = (struct fua_vcc *)(vcc->dev_data);
+			discard_rx_bd(fua_vcc, bd);
 			atomic_inc(&vcc->stats->rx_drop);
 			fua_debug("drop a rx\n");
 		}
@@ -2302,12 +2313,12 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		if (!vcc) {
 			atomic_inc(&fua_priv->txb_vcc_closed);
 //			fua_warning("channel %d transmits a tx buffer - channel has closed\n", entry->channel_code);
-			dev_kfree_skb_any(skb);
+			//dev_kfree_skb_any(skb);
 		}
 		else if (!test_bit(ATM_VF_READY, &vcc->flags)) {
 			atomic_inc(&fua_priv->txb_vcc_not_ready);
 //			fua_warning("channel %d transmits a tx buffer - channel is disabled\n", entry->channel_code);
-			dev_kfree_skb_any(skb);
+			//dev_kfree_skb_any(skb);
 		}
 		else {
 			fua_vcc = (struct fua_vcc *)(vcc->dev_data);
@@ -2382,61 +2393,69 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		}
 		fua_vcc = (struct fua_vcc *)(vcc->dev_data);
 
-		bd = fua_vcc->rxcur;
-		if (bd->status & AAL5_RXBD_ATTR_E)
-			return;
-		if (bd->status & AAL5_RXBD_ATTR_F) {
-			fua_debug("received the first bd at 0x%p\n", bd);
-			if (fua_vcc->first != NULL) {
-				atomic_inc(&fua_priv->rxf_first_again);
-//				fua_warning("\tmisordered first bd\n");
-				//fua_debug("\tmisordered first bd\n");
+		while (!(fua_vcc->rxcur->status & AAL5_RXBD_ATTR_E)) {
+			bd = fua_vcc->rxcur;
+			if (bd->status & AAL5_RXBD_ATTR_F) {
+				fua_debug("received the first bd at 0x%p\n", bd);
+				if (fua_vcc->first != NULL) {
+					atomic_inc(&fua_priv->rxf_first_again);
+//					fua_warning("\tmisordered first bd\n");
+					//fua_debug("\tmisordered first bd\n");
+					discard_rx_bd(fua_vcc, fua_vcc->first);
+				}
+				fua_vcc->first = bd;
+			}
+
+			if (!fua_vcc->first) {
+				atomic_inc(&fua_priv->rxf_miss_first);
+//				fua_warning("miss the first bd in " "the frame for %d channel\n", entry->channel_code);
+				//fua_debug("miss the first bd in " "the frame for %d channel\n", entry->channel_code);
+				fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
+				/* discard all bds include until rxcur. */
+				discard_rx_bd(fua_vcc, fua_vcc->rxcur);
+				return;
+			}
+			if ((bd->status & AAL5_RXBD_ATTR_ABRT)
+				|| (bd->status & AAL5_RXBD_ATTR_LNE)
+				|| (bd->status & AAL5_RXBD_ATTR_CRE)) {
+				/* receive a abort message */
+				if (bd->status & AAL5_RXBD_ATTR_ABRT) {
+					atomic_inc(&fua_priv->rxf_abort);
+//					fua_warning("\tAAL5 frame abort for %d channel\n", entry->channel_code);
+				}
+				else {
+					if (bd->status & AAL5_RXBD_ATTR_CRE) {
+						atomic_inc(&fua_priv->rxf_crc_error);
+//						fua_warning("\tAAL5 frame CRC error for %d channel. BD status 0x%04X length %d buf 0x%08X\n",
+//							 entry->channel_code, bd->status, bd->length, bd->buf);
+					}
+					if (bd->status & AAL5_RXBD_ATTR_LNE) {
+						atomic_inc(&fua_priv->rxf_length_error);
+//						fua_warning("\tAAL5 frame length error for %d channel. BD status 0x%04X length %d buf 0x%08X\n",
+//							 entry->channel_code, bd->status, bd->length, bd->buf);
+					}
+				}
+//				dump_aal5_crc(fua_vcc, bd, "RXF CRC Error");
+
+				fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
 				discard_rx_bd(fua_vcc, fua_vcc->first);
+				// Since we just dropped the bd's, we need to look for a new first bd
+				fua_vcc->first = NULL;
+				return;
 			}
-			fua_vcc->first = bd;
-		}
-
-		if (!fua_vcc->first) {
-			atomic_inc(&fua_priv->rxf_miss_first);
-//			fua_warning("miss the first bd in " "the frame for %d channel\n", entry->channel_code);
-			//fua_debug("miss the first bd in " "the frame for %d channel\n", entry->channel_code);
+//			dump_aal5_crc(fua_vcc, bd, "RXF normal");
 			fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
-			/* discard all bds include until rxcur. */
-			discard_rx_bd(fua_vcc, fua_vcc->rxcur);
-			return;
-		}
-		if ((bd->status & AAL5_RXBD_ATTR_ABRT)
-			|| (bd->status & AAL5_RXBD_ATTR_LNE)
-			|| (bd->status & AAL5_RXBD_ATTR_CRE)) {
-			/* receive a abort message */
-			if (bd->status & AAL5_RXBD_ATTR_ABRT) {
-				atomic_inc(&fua_priv->rxf_abort);
-//				fua_warning("\tAAL5 frame abort for %d channel\n", entry->channel_code);
-			}
-			else {
-				if (bd->status & AAL5_RXBD_ATTR_CRE) {
-					atomic_inc(&fua_priv->rxf_crc_error);
-//					fua_warning("\tAAL5 frame CRC error for %d channel. BD status 0x%04X length %d buf 0x%08X\n",
-//						 entry->channel_code, bd->status, bd->length, bd->buf);
+			if (bd->status & AAL5_RXBD_ATTR_L) {
+				if (!fua_vcc->first) {
+					atomic_inc(&fua_priv->rxb_last_miss);
+					discard_rx_bd(fua_vcc, fua_vcc->rxcur);	// first bd not set yet, so discard this partial frame
 				}
-				if (bd->status & AAL5_RXBD_ATTR_LNE) {
-					atomic_inc(&fua_priv->rxf_length_error);
-//					fua_warning("\tAAL5 frame length error for %d channel. BD status 0x%04X length %d buf 0x%08X\n",
-//						 entry->channel_code, bd->status, bd->length, bd->buf);
+				else {
+					do_rx(fua_priv, entry->channel_code, bd);  // process from first to this bd
 				}
 			}
-//			dump_aal5_crc(fua_vcc, bd, "RXF CRC Error");
-
-			fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
-			discard_rx_bd(fua_vcc, fua_vcc->first);
-			// Since we just dropped the bd's, we need to look for a new first bd
-			fua_vcc->first = NULL;
-			return;
-		}
-//		dump_aal5_crc(fua_vcc, bd, "RXF normal");
-		fua_vcc->rxcur = bd_get_next(bd, fua_vcc->rxbase, AAL5_RXBD_ATTR_W);
-		do_rx(fua_priv, entry->channel_code, bd);
-	}
+		} // while !AAL5_RXBD_ATTR_E
+	} // if AAL5_RXBD_ATTR_RXF
 }
 
 void handle_intr_que(struct fua_private *fua_priv, int que, int overflow)
@@ -2571,8 +2590,11 @@ static void fua_tasklet(unsigned long device)
 		for (j = 0; j < qlen; j++) {
 			skb = skb_dequeue(&fua_vcc->tx_list);
 			res = do_tx(skb);
-			if (res == TRAN_FAIL)
+			if (res == TRAN_FAIL) {
 				skb_queue_tail(&fua_vcc->tx_list, skb);
+				/* requeue the tasklet and try again later - billf 2013-10-09 */
+				//tasklet_schedule(&fua_priv->task);
+			}
 			else if (res == TRAN_OK) {
 				skb_queue_tail(&fua_vcc->pop_list, skb);
 				atomic_inc(&fua_priv->tx_vcc[i]->stats->tx);
@@ -3032,8 +3054,6 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	struct upc_slot_tx *upc_slot_tx;
 	struct upc_slot_rx *upc_slot_rx;
 	int err;
-	unsigned char *mac_addr = NULL;
-	struct device_node *np = NULL;
 
 	dev = atm_dev_register("Freescale_UCC_ATM", NULL, &ops, -1, NULL);
 	if (dev == NULL)
@@ -3044,23 +3064,17 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	dev->ci_range.vci_bits = MAX_VCI_BITS;
 	dev->link_rate = ATM_OC3_PCR;
 
+//	mac_addr = of_get_mac_address(np);
+//	if (mac_addr)
+//		memcpy(dev->esi, mac_addr, 6);
 	dev->esi[0] = 0x00;
 	dev->esi[1] = 0x00;
 	dev->esi[2] = 0x0B;
 	dev->esi[3] = 0x50;
 	dev->esi[4] = 0x61;
-	dev->esi[5] = 0xDA;
+	dev->esi[5] = 0xDB;
 
-	if ((np = of_find_compatible_node(np, "atm", "fua")) != NULL)
-	{
-		fua_warning("atm mac address node found... \n");
-		mac_addr = of_get_mac_address(np);
-		if (mac_addr)
-			memcpy(dev->esi, mac_addr, 6);
-		of_node_put(np);
-	}
-
-	fua_warning(" atm mac address %02x:%02x:%02x:%02x:%02x:%02x\n", dev->esi[0],dev->esi[1],dev->esi[2],dev->esi[3],dev->esi[4],dev->esi[5]);
+	fua_debug(" atm mac address %02x:%02x:%02x:%02x:%02x:%02x\n", dev->esi[0],dev->esi[1],dev->esi[2],dev->esi[3],dev->esi[4],dev->esi[5]);
 
 	phy_info = kmalloc(sizeof(struct phy_info),GFP_KERNEL);
 	if (phy_info == NULL) {
