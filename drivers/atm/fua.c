@@ -67,9 +67,9 @@
 
 struct fua_info fua_primary_info = {
 	.max_thread = 0x10,
-	.max_channel = 0x200,
-	.max_bd = 0x10000,		/* 128 channels (64 bi-directional). max_bd = 128 * bd_per_channel  */
-	.bd_per_channel = 0x200,
+	.max_channel = 0x200,	/* 512 channels (256 bi-directional) */
+	.max_bd = 0x10000,		/* max_bd = max_channel * bd_per_channel  */
+	.bd_per_channel = 0x20,	/* 32 x 512 x 4800 (total must be less than 80MB) */
 	.max_intr_que = 0x4,
 	.intr_ent_per_que = 0x16,
 	.intr_threshold = 1,
@@ -1883,7 +1883,7 @@ int open_rx(struct atm_vcc *vcc)
 	rx_qos = &vcc->qos.rxtp;
 //	fua_debug("enter [fua_vcc=%p] [atm_vcc=%p] [atm_vcc->dev=%p] [atm_vcc->dev->class_dev=%p] [dma_ops=%p]\n",
 //			fua_vcc, vcc, vcc->dev, &vcc->dev->class_dev, vcc->dev->class_dev.archdata.dma_ops);
-	fua_debug("Open Rx Channel %d.%d class %s max %d pcr %d min %d\n", vcc->vpi, vcc->vci,
+	fua_warning("Open Rx Channel %d.%d class %s max_pcr %d pcr %d min %d\n", vcc->vpi, vcc->vci,
 			class_name[vcc->qos.rxtp.traffic_class], vcc->qos.rxtp.max_pcr, vcc->qos.rxtp.pcr, vcc->qos.rxtp.min_pcr);
 
 	if ((rx_qos->traffic_class == ATM_CBR)
