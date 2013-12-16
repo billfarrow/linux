@@ -3063,6 +3063,8 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	struct upc_slot_tx *upc_slot_tx;
 	struct upc_slot_rx *upc_slot_rx;
 	int err;
+	unsigned char *mac_addr = NULL;
+	struct device_node *np = NULL;
 
 	dev = atm_dev_register("Freescale_UCC_ATM", NULL, &ops, -1, NULL);
 	if (dev == NULL)
@@ -3073,9 +3075,7 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	dev->ci_range.vci_bits = MAX_VCI_BITS;
 	dev->link_rate = ATM_OC3_PCR;
 
-//	mac_addr = of_get_mac_address(np);
-//	if (mac_addr)
-//		memcpy(dev->esi, mac_addr, 6);
+	// Set a default ATM MAC address
 	dev->esi[0] = 0x00;
 	dev->esi[1] = 0x00;
 	dev->esi[2] = 0x0B;
@@ -3083,7 +3083,19 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	dev->esi[4] = 0x61;
 	dev->esi[5] = 0xDB;
 
-	fua_debug(" atm mac address %02x:%02x:%02x:%02x:%02x:%02x\n", dev->esi[0],dev->esi[1],dev->esi[2],dev->esi[3],dev->esi[4],dev->esi[5]);
+	if ((np = of_find_compatible_node(np, "atm", "fua")) != NULL)
+	{
+		mac_addr = of_get_mac_address(np);
+		if (mac_addr)
+			memcpy(dev->esi, mac_addr, 6);
+		of_node_put(np);
+	}
+	else
+	{
+		fua_warning("ATM MAC address not found in flattened device tree, using default\n");
+	}
+
+	fua_warning(" atm mac address %02x:%02x:%02x:%02x:%02x:%02x\n", dev->esi[0],dev->esi[1],dev->esi[2],dev->esi[3],dev->esi[4],dev->esi[5]);
 
 	phy_info = kmalloc(sizeof(struct phy_info),GFP_KERNEL);
 	if (phy_info == NULL) {
