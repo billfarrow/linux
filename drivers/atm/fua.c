@@ -1752,13 +1752,22 @@ int open_tx(struct atm_vcc *vcc)
 	out_be16(&tct->tbdcnt, 0);
 	out_be16(&tct->tbd_offset, 0);
 	out_be32(&tct->rate, 0);
-	pcr_calc(tx_qos->max_pcr, tx_qos->pcr,
-			fua_dev->cps, &pcr, &pcr_fraction);
-	if (!pcr && !pcr_fraction) {
-//		pcr = 1;
+
+	if (tx_qos->pcr > 0)
+	{
+		pcr_calc(tx_qos->max_pcr, tx_qos->pcr,
+				fua_dev->cps, &pcr, &pcr_fraction);
+		if (!pcr && !pcr_fraction) {
+//			pcr = 1;
+			pcr = 0;
+			pcr_fraction = 140;
+//			pcr_fraction = 0;
+		}
+	}
+	else
+	{
 		pcr = 0;
 		pcr_fraction = 140;
-//		pcr_fraction = 0;
 	}
 	if (pcr > fua_dev->slot_count)
 	{
