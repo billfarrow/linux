@@ -1650,8 +1650,6 @@ int open_tx(struct atm_vcc *vcc)
 	u16 pcr;
 	u8 pcr_fraction;
 	int i;
-	uint8_t priority;
-	uint8_t act;		// ATM Channel Type
 
 	dev = vcc->dev;
 	fua_dev = (struct fua_device *)(dev->dev_data);
@@ -1671,22 +1669,24 @@ int open_tx(struct atm_vcc *vcc)
 		case ATM_CBR:
 		{
 			fua_vcc->traffic_type = PCR;
-			priority = 0;
-			act = ACT_OTH;		// Peak Cell Rate pacing
+			fua_vcc->priority = 0;
+			fua_vcc->act = ACT_OTH;		// Peak Cell Rate pacing
+			fua_vcc->avcf = 0;			/* keep this channel in the APC */
 			break;
 		}
 		case ATM_VBR:
 		{
 			fua_vcc->traffic_type = PCR;
-			priority = 1;
-			act = ACT_VBR;		// Peak and Sustain Cell Rate pacing
+			fua_vcc->priority = 1;
+			fua_vcc->act = ACT_VBR;		// Peak and Sustain Cell Rate pacing
 			break;
 		}
 		case ATM_UBR:
 		{
 			fua_vcc->traffic_type = PCR;
-			priority = 2;
-			act = ACT_OTH;		// Peak Cell Rate pacing, at a lower priority
+			fua_vcc->priority = 1;
+			fua_vcc->act = ACT_OTH;		// Peak Cell Rate pacing, at a lower priority
+			fua_vcc->avcf = 1;			/* remove this channel from the APC when empty */
 			break;
 		}
 		default:
@@ -1777,7 +1777,7 @@ int open_tx(struct atm_vcc *vcc)
 		pcr_fraction = 0;
 	}
 	fua_warning("ATM Channel %d.%d Type %d, priority %d, max_pcr %d, pcr %d, cps %d, slots %d, Setting Tx PCR %d.%d %s TCTE %d\n",
-			 vcc->vpi, vcc->vci, act, priority, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction,
+			 vcc->vpi, vcc->vci, fua_vcc->act, fua_vcc->priority, tx_qos->max_pcr, tx_qos->pcr, fua_dev->cps, fua_dev->slot_count, pcr, pcr_fraction,
 			(fua_vcc->tx_cc > MAX_INTERNAL_CHANNEL_CODE?"Ext":"Int"), fua_vcc->tx_cc);
 	TCT_SET_PCR(tct, pcr);
 	TCT_SET_PCR_FRACTION(tct, pcr_fraction);
@@ -1800,7 +1800,7 @@ int open_tx(struct atm_vcc *vcc)
 
 	/* start this channel. Put this channel into APC scheduling table */
 	if (!fua_vcc->avcf) {
-		atm_transmit(fua_vcc, act, priority, 0);
+		atm_transmit(fua_vcc, fua_vcc->act, fua_vcc->priority, 0);
 	}
 	return 0;
 }
@@ -2083,8 +2083,10 @@ enum tran_res do_tx(struct sk_buff *skb)
 //		dump_tct(fua_vcc->tct, fua_vcc->aal);
 //		dump_apc(&fua_dev->fua_priv->apc_tbl_base[fua_dev->phy_info->phy_id]);
 
-		if (fua_vcc->avcf)
-			atm_transmit(fua_vcc, 0, 0, 0);
+		if (fua_vcc->avcf) {
+			if ((fua_vcc->tct->attr & TCT_ENTRY_ATTR_VCON) == 0)
+				atm_transmit(fua_vcc, fua_vcc->act, fua_vcc->priority, 0);
+		}
 	} else {
 		fua_debug("line %d skb contains multiple fragment buffers\n", __LINE__);
 		bd->status |= AAL5_TXBD_ATTR_R;
@@ -2115,8 +2117,10 @@ enum tran_res do_tx(struct sk_buff *skb)
 					bd->status |=
 						(AAL5_TXBD_ATTR_L |
 						AAL5_TXBD_ATTR_R);
-				if (fua_vcc->avcf)
-					atm_transmit(fua_vcc, 0, 0, 0);
+				if (fua_vcc->avcf) {
+					if ((fua_vcc->tct->attr & TCT_ENTRY_ATTR_VCON) == 0)
+						atm_transmit(fua_vcc, fua_vcc->act, fua_vcc->priority, 0);
+				}
 			}
 		}
 		if (skb_shinfo(skb)->frag_list) {
@@ -3119,8 +3123,8 @@ static int fua_atm_device_create(struct device *device, struct fua_private *f_p,
 	}
 	fua_debug("returned from suni5384_init()\n");
 
-	phy_info->prio_level = 3;
-	phy_info->max_iteration = 3;
+	phy_info->prio_level = 2;  // was 3
+	phy_info->max_iteration = 3;  // was 3
 	phy_info->scheduler_mode = 0;
 
 	if(phy_info->phy_id > fua_info->phy_last)

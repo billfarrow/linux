@@ -595,6 +595,8 @@ struct fua_vcc {
 	/* Transmit channel */
 	int avcf;
 	int traffic_type;
+	int priority;		/* APC priority level */
+	int act;			/* APC ATM Channel Type */
 	int tx_intq_num;
 	int tx_cc;
 	tct_entry_t *tct;
