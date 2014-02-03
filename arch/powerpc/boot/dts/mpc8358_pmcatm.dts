@@ -128,10 +128,15 @@
 //			max_bitr = <155000000>; // cps = 1
 //			max_bitr = <77500000>; // cps = 2
 			max_bitr = <38750000>; // cps = 4
-//			min_bitr = <50000000>;
+//			max_bitr = <19375000>; // cps = 8
+//			min_bitr = <50000000>;	// 3 slots @ cps=1
 //			min_bitr = <5000000>;	// 32 slots
-			min_bitr = <523648>;	// 296
+			min_bitr = <523648>;	// 296 slots @ cps=1 or 75 slots @ cps=4
+//			min_bitr = <1047297>;	// 38 slots @ cps=4
+//			min_bitr = <2094594>;	// 75 slots @ cps=1
+//			min_bitr = <261824>;	// 75 slots @ cps=8
 //			min_bitr = <1210937>;	// 128 / cps
+//			min_bitr = <22142857>;	// 8 slots @ cps=1
 			port-width = <1>;	// 0 = 8 bit Utopia, 1 = 16 bit Utopia
 		};
 

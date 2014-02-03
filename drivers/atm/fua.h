@@ -718,7 +718,8 @@ struct fua_info {
 	int max_thread; /* The number of thead this driver can used. 1 <= threads <= 32; */
 	int max_channel; /* The maximum number of channel this driver can used. */
 	int max_bd; /* Number of bd in bd_pool */
-	int bd_per_channel;
+	int bd_per_tx_channel;
+	int bd_per_rx_channel;
 	int max_intr_que; /* The maximum number of interrupt queue */
 	int intr_ent_per_que; /* The number of entries per interrupt queue */
 	int intr_threshold; /* The number of interupts required before QE issue a global interrupt. */

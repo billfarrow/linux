@@ -69,7 +69,8 @@ struct fua_info fua_primary_info = {
 	.max_thread = 0x10,
 	.max_channel = 0x200,	/* 512 channels (256 bi-directional) */
 	.max_bd = 0x10000,		/* max_bd = max_channel * bd_per_channel  */
-	.bd_per_channel = 0x20,	/* 32 x 512 x 4800 (total must be less than 80MB) */
+	.bd_per_tx_channel = 0x100,	/* only bd */
+	.bd_per_rx_channel = 0x40,	/* bd and buf: 64 x 256 (max_channel/2) x 4800 (rbuf_size) (total must be less than 80MB) */
 	.max_intr_que = 0x4,
 	.intr_ent_per_que = 0x16,
 	.intr_threshold = 1,
@@ -1698,17 +1699,17 @@ int open_tx(struct atm_vcc *vcc)
 	fua_vcc->tx_intq_num = INT_TX_QUE;
 
 	/* alloc bds */
-	fua_vcc->txbase = alloc_bds(&f_p->bd_pool, fua_info->bd_per_channel);
+	fua_vcc->txbase = alloc_bds(&f_p->bd_pool, fua_info->bd_per_tx_channel);
 	if (!fua_vcc->txbase) {
 		fua_warning("failed in alloc bds\n");
 		return -ENOMEM;
 	}
 	fua_vcc->txcur = bd = fua_vcc->txbase;
-	for (i = 0; i < fua_info->bd_per_channel; i++) {
+	for (i = 0; i < fua_info->bd_per_tx_channel; i++) {
 		bd->status = 0;
 		bd->status |= AAL5_TXBD_ATTR_I;
 		bd->length = 0;
-		if (i < (fua_info->bd_per_channel - 1))
+		if (i < (fua_info->bd_per_tx_channel - 1))
 			bd++;
 	}
 	bd->status |= AAL5_TXBD_ATTR_W;
@@ -1734,7 +1735,7 @@ int open_tx(struct atm_vcc *vcc)
 
 	if (i == fua_info->max_channel) {
 		free_bds(&f_p->bd_pool, fua_vcc->txbase,
-				fua_info->bd_per_channel);
+				fua_info->bd_per_tx_channel);
 		fua_debug("failed freeing bds\n");
 		return -EFAULT;
 	}
@@ -1839,7 +1840,7 @@ void close_tx(struct atm_vcc *vcc)
 			kfree_skb(skb);
 	}
 
-	free_bds(&f_p->bd_pool, fua_vcc->txbase, f_p->fua_info->bd_per_channel);
+	free_bds(&f_p->bd_pool, fua_vcc->txbase, f_p->fua_info->bd_per_tx_channel);
 
 	f_p->tx_vcc[fua_vcc->tx_cc] = NULL;
 	fua_vcc->tx_cc = 0;
@@ -1906,15 +1907,15 @@ int open_rx(struct atm_vcc *vcc)
 	}
 
 	fua_vcc->rx_intq_num = INT_RX_QUE;
-	fua_vcc->rxbase = alloc_bds(&f_p->bd_pool, fua_info->bd_per_channel);
+	fua_vcc->rxbase = alloc_bds(&f_p->bd_pool, fua_info->bd_per_rx_channel);
 	if (!fua_vcc->rxbase) {
 		fua_warning("failed in alloc_bds num:0x%x\n",
-			fua_info->bd_per_channel);
+			fua_info->bd_per_rx_channel);
 		return -ENOMEM;
 	}
 	fua_vcc->rxcur = bd = fua_vcc->rxbase;
 	fua_vcc->first = NULL;
-	for (i = 0; i < fua_info->bd_per_channel; i++) {
+	for (i = 0; i < fua_info->bd_per_rx_channel; i++) {
 		bd->status = 0;
 		bd->status |= (AAL5_RXBD_ATTR_E | AAL5_RXBD_ATTR_I);
 		bd->length = 0;
@@ -1924,7 +1925,7 @@ int open_rx(struct atm_vcc *vcc)
 			goto out;
 		}
 		bd->buf = virt_to_phys((void *)bd->buf);
-		if (i < (fua_info->bd_per_channel - 1))
+		if (i < (fua_info->bd_per_rx_channel - 1))
 			bd++;
 	}
 	bd->status |= AAL5_RXBD_ATTR_W;
@@ -1986,7 +1987,7 @@ out:
 		bd->buf = 0;
 		bd++;
 	}
-	free_bds(&f_p->bd_pool, fua_vcc->rxbase, fua_info->bd_per_channel);
+	free_bds(&f_p->bd_pool, fua_vcc->rxbase, fua_info->bd_per_rx_channel);
 
 	return err;
 }
@@ -2012,14 +2013,14 @@ void close_rx(struct atm_vcc *vcc)
 				phy_info->phy_id, vcc->vpi, vcc->vci);
 	skb_queue_purge(&fua_vcc->rx_list);
 	bd = fua_vcc->rxbase;
-	for (i = 0; i < fua_info->bd_per_channel; i++) {
+	for (i = 0; i < fua_info->bd_per_rx_channel; i++) {
 //		printk("%s() bd 0x%08X bd->buf 0x%08X [0x%08X]\n", __func__, (uint32_t)bd, (uint32_t)phys_to_virt(bd->buf), (uint32_t)bd->buf);
 		if (bd->buf)
 			kfree((void *)phys_to_virt(bd->buf));
 		bd->buf = 0;
 		bd++;
 	}
-	free_bds(&f_p->bd_pool, fua_vcc->rxbase, fua_info->bd_per_channel);
+	free_bds(&f_p->bd_pool, fua_vcc->rxbase, fua_info->bd_per_rx_channel);
 	f_p->rx_vcc[fua_vcc->rx_cc] = NULL;
 	fua_vcc->rx_cc = 0;
 	fua_vcc->rct = NULL;
