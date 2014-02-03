@@ -1761,14 +1761,14 @@ int open_tx(struct atm_vcc *vcc)
 		if (!pcr && !pcr_fraction) {
 //			pcr = 1;
 			pcr = 0;
-			pcr_fraction = 140;
+			pcr_fraction = 64;
 //			pcr_fraction = 0;
 		}
 	}
 	else
 	{
 		pcr = 0;
-		pcr_fraction = 140;
+		pcr_fraction = 64;
 	}
 	if (pcr > fua_dev->slot_count)
 	{
