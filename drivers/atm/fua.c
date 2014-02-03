@@ -2296,8 +2296,6 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 //			fua_warning("channel %d transmit tx buffer not ready - channel is disabled\n", entry->channel_code);
 		}
 		else {
-			fua_vcc = (struct fua_vcc *)(vcc->dev_data);
-			discard_rx_bd(fua_vcc, fua_vcc->rxcur);
 			atomic_inc(&fua_priv->tbnr_drop);
 		}
 	}
@@ -2310,7 +2308,13 @@ static void handle_intr_entry(struct fua_private *fua_priv, intr_que_entry_t * e
 		vcc = fua_priv->rx_vcc[entry->channel_code];
 		if (vcc) {
 			fua_vcc = (struct fua_vcc *)(vcc->dev_data);
-			discard_rx_bd(fua_vcc, bd);
+			//fua_warning("channel %d got busy intr first %08x rxcur %08x\n", entry->channel_code, fua_vcc->first, fua_vcc->rxcur);
+			/* discard the last partial frame or all buffers in the ring */
+			if (fua_vcc->first)
+				discard_rx_bd(fua_vcc, fua_vcc->first);
+			else
+				discard_rx_bd(fua_vcc, fua_vcc->rxcur);
+			fua_vcc->first = NULL;
 			atomic_inc(&vcc->stats->rx_drop);
 			fua_debug("drop a rx\n");
 		}
